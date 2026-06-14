@@ -1,0 +1,63 @@
+@import "tailwindcss";
+
+:root {
+  /* Light mode colors */
+  --background: #ffffff;
+  --foreground: #171717;
+
+  /* Brand Color Palette - EdTech (Navy/Blue) */
+  --color-primary-dark: #2e5eaa;
+  --color-primary: #1295d8;
+  --color-primary-light: #50b4f2;
+  --color-primary-pale: #cde6f7;
+
+  /* Text Colors */
+  --color-text-heading: #1a2b4a;
+  --color-text-body: #4a5568;
+  --color-text-muted: #718096;
+
+  /* Background Colors */
+  --color-bg-section-alt: #f7fafc;
+
+  /* Gradients */
+  --gradient-hero: linear-gradient(135deg, #2e5eaa 0%, #1295d8 100%);
+  --gradient-cta: linear-gradient(135deg, #1295d8 0%, #50b4f2 100%);
+
+  /* Typography */
+  --font-base: 17px;
+  --line-height-tight: 1.4;
+  --line-height-normal: 1.6;
+  --line-height-relaxed: 1.7;
+
+  /* Spacing & Borders */
+  --border-radius-button: 8px;
+  --border-radius-card: 12px;
+  --shadow-sm: 0 1px 4px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.06);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+html {
+  font-size: var(--font-base);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
+  line-height: var(--line-height-normal);
+}
