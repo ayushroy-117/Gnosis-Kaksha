@@ -15,13 +15,19 @@ export function middleware(request: NextRequest) {
 
   // Redirect to login if accessing protected routes
   if (isProtectedRoute) {
-    // Get auth token from cookies (Supabase sets this automatically)
-    const authToken = request.cookies.get('sb-auth-token');
+    try {
+      // Get auth token from cookies (Supabase sets this automatically)
+      const authToken = request.cookies.get('sb-auth-token');
 
-    if (!authToken) {
-      // Redirect to login page
-      const loginUrl = new URL('/auth', request.url);
-      return NextResponse.redirect(loginUrl);
+      if (!authToken) {
+        // Redirect to login page
+        const loginUrl = new URL('/auth', request.url);
+        return NextResponse.redirect(loginUrl);
+      }
+    } catch (error) {
+      console.error('Middleware error:', error);
+      // Allow request to proceed on error
+      return NextResponse.next();
     }
   }
 
