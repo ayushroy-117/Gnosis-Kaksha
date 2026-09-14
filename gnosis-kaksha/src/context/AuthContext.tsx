@@ -21,7 +21,7 @@ interface AuthContextType {
   loading: boolean;
   isAuthenticated: boolean;
   signIn: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
-  signUp: (email: string, password: string, role: 'teacher' | 'admin') => Promise<{ success: boolean; error?: string }>;
+  signUp: (email: string, password: string, role: 'admin' | 'accountant') => Promise<{ success: boolean; error?: string }>;
   signOut: () => Promise<void>;
 }
 
@@ -70,7 +70,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     };
   };
 
-  const signUp = async (email: string, password: string, role: 'teacher' | 'admin') => {
+  const signUp = async (email: string, password: string, role: 'admin' | 'accountant') => {
     const result = await authSignUp({ email, password, role });
 
     if (result.success) {

@@ -10,12 +10,12 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-export type UserRole = 'teacher' | 'admin' | 'student';
+export type UserRole = 'student' | 'admin' | 'accountant';
 
 interface SignUpData {
   email: string;
   password: string;
-  role: 'teacher' | 'admin';
+  role: 'admin' | 'accountant';
 }
 
 interface AuthResponse {

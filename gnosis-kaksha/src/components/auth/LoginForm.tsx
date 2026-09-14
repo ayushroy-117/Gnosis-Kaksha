@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { useAuth } from '@/hooks/useAuth';
+import { getUserRole } from '@/lib/auth';
 
 // Validation schema
 const loginSchema = z.object({
@@ -48,9 +49,16 @@ export function LoginForm({ onSwitchToRegister, onLoginSuccess }: LoginFormProps
         return;
       }
 
-      // Redirect to dashboard (role-based redirection will happen in middleware)
+      // Redirect based on the authenticated user's role
       onLoginSuccess?.();
-      router.push('/teacher/dashboard');
+      const role = await getUserRole();
+      if (role === 'admin') {
+        router.push('/admin/dashboard');
+      } else if (role === 'accountant') {
+        router.push('/accountant/dashboard');
+      } else {
+        router.push('/student/dashboard');
+      }
       
     } catch (error: any) {
       setGeneralError(error.message || 'An unexpected error occurred');

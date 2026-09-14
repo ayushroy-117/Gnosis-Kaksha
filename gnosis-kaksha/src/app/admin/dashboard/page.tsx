@@ -1,126 +1,175 @@
-'use client';
+import Link from 'next/link';
+import { Users, UserCheck, UserPlus, Wallet, Megaphone, ArrowRight } from 'lucide-react';
+import { SampleDataBanner } from '@/components/dashboard/SampleDataBanner';
+import { StatCard } from '@/components/dashboard/StatCard';
+import { SectionCard } from '@/components/dashboard/SectionCard';
+import { Badge } from '@/components/dashboard/Badge';
+import { EmptyState } from '@/components/dashboard/EmptyState';
+import {
+  getAdminData,
+  classLabel,
+  formatINR,
+  formatDate,
+} from '@/lib/institute-data';
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { useAuth } from '@/hooks/useAuth';
-import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
+export const metadata = { title: 'Admin Overview - Gnosis Kaksha' };
 
-export default function AdminDashboard() {
-  const router = useRouter();
-  const { user, loading, signOut } = useAuth();
-  const [isSigningOut, setIsSigningOut] = useState(false);
-
-  useEffect(() => {
-    if (!loading && !user) {
-      router.push('/(auth)/auth');
-    }
-  }, [user, loading, router]);
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin h-12 w-12 border-4 border-[#1295D8] border-t-transparent rounded-full mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!user) {
-    return null;
-  }
-
-  const handleSignOut = async () => {
-    setIsSigningOut(true);
-    try {
-      await signOut();
-      router.push('/');
-    } catch (error) {
-      console.error('Logout failed:', error);
-    } finally {
-      setIsSigningOut(false);
-    }
-  };
+export default function AdminDashboardPage() {
+  const { stats, classDistribution, pendingAdmissions, notices, currentPeriod } =
+    getAdminData();
+  const maxClassCount = Math.max(1, ...classDistribution.map((c) => c.count));
+  const recentNotices = [...notices]
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .slice(0, 3);
 
   return (
-    <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="flex justify-between items-center mb-8">
-          <div>
-            <h1 className="text-4xl font-bold text-[#1A2B4A] mb-2">Admin Portal</h1>
-            <p className="text-gray-600">{user.email}</p>
-          </div>
-          <Button
-            variant="outline"
-            onClick={handleSignOut}
-            isLoading={isSigningOut}
-            disabled={isSigningOut}
-          >
-            Sign Out
-          </Button>
-        </div>
+    <div className="space-y-6">
+      <SampleDataBanner />
 
-        {/* Dashboard Grid */}
-        <div className="grid md:grid-cols-4 gap-6 mb-8">
-          <Card className="p-6">
-            <h3 className="text-lg font-semibold text-[#1A2B4A] mb-4">Total Students</h3>
-            <p className="text-3xl font-bold text-[#1295D8]">0</p>
-            <p className="text-gray-600 mt-2">Active registrations</p>
-          </Card>
-
-          <Card className="p-6">
-            <h3 className="text-lg font-semibold text-[#1A2B4A] mb-4">Total Teachers</h3>
-            <p className="text-3xl font-bold text-[#1295D8]">0</p>
-            <p className="text-gray-600 mt-2">Verified teachers</p>
-          </Card>
-
-          <Card className="p-6">
-            <h3 className="text-lg font-semibold text-[#1A2B4A] mb-4">Total Revenue</h3>
-            <p className="text-3xl font-bold text-[#10B981]">₹0</p>
-            <p className="text-gray-600 mt-2">Fees collected</p>
-          </Card>
-
-          <Card className="p-6">
-            <h3 className="text-lg font-semibold text-[#1A2B4A] mb-4">Pending Approvals</h3>
-            <p className="text-3xl font-bold text-[#F59E0B]">0</p>
-            <p className="text-gray-600 mt-2">Awaiting review</p>
-          </Card>
-        </div>
-
-        {/* Quick Actions */}
-        <div className="grid md:grid-cols-3 gap-6 mb-8">
-          <Button variant="primary" size="lg" className="w-full py-4">
-            View Student List
-          </Button>
-          <Button variant="secondary" size="lg" className="w-full py-4">
-            Generate Fee Receipts
-          </Button>
-          <Button variant="secondary" size="lg" className="w-full py-4">
-            Payment Records
-          </Button>
-        </div>
-
-        {/* Coming Soon */}
-        <Card className="p-8 bg-linear-to-r from-[#CDE6F7] to-[#E8F4F8]">
-          <h2 className="text-2xl font-bold text-[#1A2B4A] mb-3">🚀 Coming Soon</h2>
-          <p className="text-gray-700 mb-4">
-            The complete admin portal is being built. Soon you'll be able to:
-          </p>
-          <ul className="list-disc list-inside space-y-2 text-gray-700">
-            <li>View all student registration details</li>
-            <li>Generate and manage fee receipts</li>
-            <li>Track student and teacher payments</li>
-            <li>Approve/reject teacher registrations</li>
-            <li>View platform analytics and reports</li>
-            <li>Manage user roles and permissions</li>
-            <li>View payment records and transaction history</li>
-            <li>Generate financial reports</li>
-          </ul>
-        </Card>
+      <div>
+        <h1 className="text-3xl font-bold text-[#1A2B4A]">Admin Overview</h1>
+        <p className="mt-1 text-[#4A5568]">
+          Institute snapshot for {currentPeriod}.
+        </p>
       </div>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          icon={Users}
+          label="Total Students"
+          value={stats.totalStudents}
+          sublabel={`Across ${stats.classesOffered} classes`}
+        />
+        <StatCard
+          icon={UserCheck}
+          label="Active Enrollments"
+          value={stats.activeStudents}
+          valueColor="text-[#10B981]"
+          iconClasses="bg-green-100 text-green-600"
+        />
+        <StatCard
+          icon={UserPlus}
+          label="Pending Admissions"
+          value={stats.pendingAdmissions}
+          valueColor="text-[#F59E0B]"
+          iconClasses="bg-amber-100 text-amber-600"
+          sublabel="Awaiting review"
+        />
+        <StatCard
+          icon={Wallet}
+          label="Monthly Tuition Billed"
+          value={formatINR(stats.monthlyTuitionBilled)}
+          sublabel="Active students"
+        />
+      </div>
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
+        {/* Class distribution */}
+        <SectionCard
+          title="Students by Class"
+          description="Current enrollment distribution"
+          className="lg:col-span-2"
+        >
+          <ul className="space-y-3">
+            {classDistribution.map((c) => (
+              <li key={c.classNumber} className="flex items-center gap-3">
+                <span className="w-16 shrink-0 text-sm font-medium text-[#4A5568]">
+                  Class {c.classNumber}
+                </span>
+                <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-[#EDF2F7]">
+                  <div
+                    className="h-full rounded-full bg-[#1295D8]"
+                    style={{ width: `${(c.count / maxClassCount) * 100}%` }}
+                  />
+                </div>
+                <span className="w-6 shrink-0 text-right text-sm font-semibold text-[#1A2B4A]">
+                  {c.count}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </SectionCard>
+
+        {/* Pending admissions */}
+        <SectionCard
+          title="Recent Admissions"
+          description="New applications to review"
+          className="lg:col-span-3"
+          bodyClassName="p-0"
+          action={
+            <Link
+              href="/admin/admissions"
+              className="inline-flex items-center gap-1 text-sm font-semibold text-[#1295D8] hover:underline"
+            >
+              View all <ArrowRight size={15} />
+            </Link>
+          }
+        >
+          {pendingAdmissions.length === 0 ? (
+            <div className="p-6">
+              <EmptyState
+                icon={UserPlus}
+                title="No pending admissions"
+                message="New admission applications will appear here for review."
+              />
+            </div>
+          ) : (
+            <ul className="divide-y divide-gray-100">
+              {pendingAdmissions.map((s) => (
+                <li key={s.id} className="flex items-center gap-4 px-6 py-4">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#CDE6F7] text-sm font-semibold text-[#2E5EAA]">
+                    {s.fullName.charAt(0)}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-[#1A2B4A]">
+                      {s.fullName}
+                    </p>
+                    <p className="text-xs text-[#718096]">
+                      {classLabel(s)} · {s.board} · Applied {formatDate(s.admissionDate)}
+                    </p>
+                  </div>
+                  <Badge tone="amber">Pending</Badge>
+                </li>
+              ))}
+            </ul>
+          )}
+        </SectionCard>
+      </div>
+
+      {/* Recent notices */}
+      <SectionCard
+        title="Recent Notices"
+        description="Latest institute announcements"
+        bodyClassName="p-0"
+        action={
+          <Link
+            href="/admin/notices"
+            className="inline-flex items-center gap-1 text-sm font-semibold text-[#1295D8] hover:underline"
+          >
+            Manage <ArrowRight size={15} />
+          </Link>
+        }
+      >
+        <ul className="divide-y divide-gray-100">
+          {recentNotices.map((n) => (
+            <li key={n.id} className="flex items-start gap-3 px-6 py-4">
+              <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#CDE6F7] text-[#1295D8]">
+                <Megaphone size={16} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-semibold text-[#1A2B4A]">{n.title}</p>
+                  <Badge tone="gray">{n.audience}</Badge>
+                </div>
+                <p className="mt-0.5 line-clamp-1 text-xs text-[#718096]">{n.content}</p>
+              </div>
+              <span className="shrink-0 whitespace-nowrap text-xs text-[#718096]">
+                {formatDate(n.date)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </SectionCard>
     </div>
   );
 }

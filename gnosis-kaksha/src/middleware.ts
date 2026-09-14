@@ -1,40 +1,22 @@
-import { type NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 
-export function middleware(request: NextRequest) {
-  const pathname = request.nextUrl.pathname;
-
-  // Check if user is trying to access protected routes
-  const isProtectedRoute =
-    pathname.startsWith('/student') ||
-    pathname.startsWith('/teacher') ||
-    pathname.startsWith('/admin');
-
-  // Note: Actual auth checking requires client-side implementation with cookies
-  // This middleware acts as a supplementary check
-  // The main auth protection happens in the page components via useAuth hook
-
-  // Redirect to login if accessing protected routes
-  if (isProtectedRoute) {
-    try {
-      // Get auth token from cookies (Supabase sets this automatically)
-      const authToken = request.cookies.get('sb-auth-token');
-
-      if (!authToken) {
-        // Redirect to login page
-        const loginUrl = new URL('/auth', request.url);
-        return NextResponse.redirect(loginUrl);
-      }
-    } catch (error) {
-      console.error('Middleware error:', error);
-      // Allow request to proceed on error
-      return NextResponse.next();
-    }
-  }
-
+// Auth note:
+// The Supabase browser client (@supabase/supabase-js) persists the session in
+// localStorage, NOT cookies, so middleware cannot read it here. The real auth guard
+// lives in the dashboard shell (`useAuth` in DashboardLayout), which shows a spinner
+// while loading and redirects unauthenticated users to `/auth`.
+//
+// The previous version checked for an `sb-auth-token` cookie that this client never
+// sets, which blocked every legitimately logged-in user. We let requests through and
+// rely on the client-side guard.
+//
+// TODO: migrate auth to @supabase/ssr (cookie-based sessions) to enable true
+// server-side protection here, then gate on the `sb-<project-ref>-auth-token` cookie.
+export function middleware() {
   return NextResponse.next();
 }
 
 // Configure which routes to run middleware on
 export const config = {
-  matcher: ['/student/:path*', '/teacher/:path*', '/admin/:path*'],
+  matcher: ['/student/:path*', '/accountant/:path*', '/admin/:path*'],
 };

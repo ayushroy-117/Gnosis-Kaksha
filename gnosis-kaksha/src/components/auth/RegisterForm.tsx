@@ -15,7 +15,7 @@ const registerSchema = z.object({
   email: z.string().email('Valid email is required'),
   password: z.string().min(6, 'Password must be at least 6 characters'),
   confirmPassword: z.string().min(6, 'Confirm password is required'),
-  role: z.enum(['teacher', 'admin']).refine(val => val, { message: 'Please select a role' }),
+  role: z.enum(['admin', 'accountant']).refine(val => val, { message: 'Please select a role' }),
 }).refine((data) => data.password === data.confirmPassword, {
   message: 'Passwords do not match',
   path: ['confirmPassword'],
@@ -56,8 +56,8 @@ export function RegisterForm({ onSwitchToLogin, onRegisterSuccess }: RegisterFor
 
       // Redirect to appropriate dashboard
       onRegisterSuccess?.();
-      if (data.role === 'teacher') {
-        router.push('/teacher/dashboard');
+      if (data.role === 'accountant') {
+        router.push('/accountant/dashboard');
       } else {
         router.push('/admin/dashboard');
       }
@@ -89,8 +89,8 @@ export function RegisterForm({ onSwitchToLogin, onRegisterSuccess }: RegisterFor
         label="Role"
         error={errors.role?.message}
         options={[
-          { value: 'teacher', label: 'Teacher' },
           { value: 'admin', label: 'Admin' },
+          { value: 'accountant', label: 'Accountant' },
         ]}
         {...register('role')}
       />
