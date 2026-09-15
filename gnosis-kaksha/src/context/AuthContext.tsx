@@ -8,13 +8,9 @@ import {
   signUp as authSignUp,
   onAuthStateChange,
   UserRole,
+  UserData,
 } from '@/lib/auth';
 
-interface UserData {
-  id: string;
-  email: string;
-  role: UserRole;
-}
 
 interface AuthContextType {
   user: UserData | null;

@@ -21,6 +21,42 @@ interface DashboardLayoutProps {
   children: React.ReactNode;
 }
 
+function NavLinks({
+  navItems,
+  pathname,
+  onItemClick,
+}: {
+  navItems: DashboardNavItem[];
+  pathname: string;
+  onItemClick?: () => void;
+}) {
+  const isActive = (href: string) =>
+    pathname === href || pathname.startsWith(`${href}/`);
+
+  return (
+    <nav className="flex flex-col gap-1">
+      {navItems.map(({ label, href, icon: Icon }) => {
+        const active = isActive(href);
+        return (
+          <Link
+            key={href}
+            href={href}
+            onClick={onItemClick}
+            className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${
+              active
+                ? 'bg-[#1295D8] text-white shadow-xs'
+                : 'text-[#4A5568] hover:bg-[#CDE6F7] hover:text-[#2E5EAA]'
+            }`}
+          >
+            <Icon size={18} className="shrink-0" />
+            {label}
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
+
 export function DashboardLayout({
   navItems,
   roleLabel,
@@ -38,11 +74,6 @@ export function DashboardLayout({
       router.push('/auth');
     }
   }, [user, loading, router]);
-
-  // Close the mobile drawer whenever the route changes.
-  useEffect(() => {
-    setMobileOpen(false);
-  }, [pathname]);
 
   if (loading) {
     return (
@@ -69,31 +100,6 @@ export function DashboardLayout({
     }
   };
 
-  const isActive = (href: string) =>
-    pathname === href || pathname.startsWith(`${href}/`);
-
-  const NavList = () => (
-    <nav className="flex flex-col gap-1">
-      {navItems.map(({ label, href, icon: Icon }) => {
-        const active = isActive(href);
-        return (
-          <Link
-            key={href}
-            href={href}
-            className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${
-              active
-                ? 'bg-[#1295D8] text-white shadow-sm'
-                : 'text-[#4A5568] hover:bg-[#CDE6F7] hover:text-[#2E5EAA]'
-            }`}
-          >
-            <Icon size={18} className="shrink-0" />
-            {label}
-          </Link>
-        );
-      })}
-    </nav>
-  );
-
   return (
     <div className="min-h-[calc(100vh-4rem)] bg-[#F7FAFC]">
       <div className="mx-auto flex max-w-7xl">
@@ -105,7 +111,7 @@ export function DashboardLayout({
             </p>
             <p className="mt-0.5 text-lg font-bold text-[#1A2B4A]">Gnosis Kaksha</p>
           </div>
-          <NavList />
+          <NavLinks navItems={navItems} pathname={pathname} />
           <div className="mt-auto pt-6">
             <button
               type="button"
@@ -179,7 +185,11 @@ export function DashboardLayout({
                 <X size={20} />
               </button>
             </div>
-            <NavList />
+            <NavLinks
+              navItems={navItems}
+              pathname={pathname}
+              onItemClick={() => setMobileOpen(false)}
+            />
             <div className="mt-auto pt-6">
               <button
                 type="button"

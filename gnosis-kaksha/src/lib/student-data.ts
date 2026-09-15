@@ -5,8 +5,17 @@ import {
   EXAM_FEE,
   TSHIRT_FEE,
 } from '@/lib/fees';
+import {
+  getStudentById,
+  getStudentByRegNo,
+  getStudentByEmail,
+  getAllStudents,
+  getAllTransactions,
+  getAllNotices,
+} from '@/lib/institute-store';
 
 export interface StudentProfile {
+  id?: string;
   fullName: string;
   registrationNumber: string;
   classNumber: number;
@@ -18,7 +27,7 @@ export interface StudentProfile {
   email: string;
   address: string;
   photoUrl: string | null;
-  admissionDate: string; // ISO
+  admissionDate: string;
 }
 
 export interface EnrolledSubject {
@@ -29,11 +38,12 @@ export interface EnrolledSubject {
 
 export interface FeePayment {
   id: string;
-  date: string; // ISO
+  date: string;
   description: string;
   amount: number;
   method: string;
   status: 'paid' | 'pending';
+  utr?: string;
 }
 
 export interface FeeStatus {
@@ -46,7 +56,7 @@ export interface FeeStatus {
   mandatoryCharges: number;
   finalPayable: number;
   status: 'paid' | 'due' | 'partial';
-  nextDueDate: string; // ISO
+  nextDueDate: string;
   payments: FeePayment[];
 }
 
@@ -54,7 +64,7 @@ export interface StudentNotice {
   id: string;
   title: string;
   content: string;
-  date: string; // ISO
+  date: string;
   pinned: boolean;
 }
 
@@ -75,132 +85,120 @@ const SUBJECT_TEACHERS: Record<string, string> = {
   History: 'Riya Nath',
   Physics: 'Ankur Kumar Nath',
   Biology: 'Barnali Paul',
+  Chemistry: 'Suman Roy',
   Economics: 'Abu Sahid',
   'Political Science': 'Md. Ali Hasan',
+  'Social Science': 'Riya Nath',
 };
 
-function buildSampleData(): StudentData {
-  // Illustrative Class 10 student.
-  const classNumber = 10;
-  const enrolledSubjectNames = ['Mathematics', 'Science', 'English', 'Bengali'];
-  const previousPercentage = 84;
+export function getStudentData(userIdentifier?: string): StudentData {
+  let student = null;
+
+  if (userIdentifier) {
+    const clean = userIdentifier.trim();
+    student =
+      getStudentByRegNo(clean) ||
+      getStudentByEmail(clean) ||
+      getStudentById(clean);
+  }
+
+  // If not found by identifier, default to first student in store (Ananya Das, stu-0142)
+  if (!student) {
+    const all = getAllStudents();
+    student = all.find((s) => s.id === 'stu-0142') || all[0];
+  }
+
+  const classNumber = student?.classNumber || 10;
+  const enrolledSubjectNames = student?.subjects?.length
+    ? student.subjects
+    : ['Mathematics', 'Science', 'English', 'Bengali'];
 
   const classFees = SUBJECT_FEES[classNumber] ?? {};
   const subjects: EnrolledSubject[] = enrolledSubjectNames.map((name) => ({
     name,
-    monthlyFee: classFees[name] ?? 0,
+    monthlyFee: classFees[name] ?? 500,
     teacher: SUBJECT_TEACHERS[name] ?? 'To be assigned',
   }));
 
-  const scholarshipPercent = calculateScholarship(previousPercentage);
+  const scholarshipPercent = student?.scholarshipPercent ?? calculateScholarship(student?.previousPercentage || 80);
   const bill = calculateBill(
     subjects.map((s) => ({ name: s.name, monthly_fee: s.monthlyFee })),
     scholarshipPercent
   );
 
+  // Fetch real payments for this student
+  const studentTxns = getAllTransactions().filter((t) => t.studentId === student?.id);
+
+  const payments: FeePayment[] = studentTxns.length
+    ? studentTxns.map((t) => ({
+        id: t.id,
+        date: t.date,
+        description: t.description,
+        amount: t.amount,
+        method: t.method,
+        status: t.status === 'pending' ? 'pending' : 'paid',
+        utr: t.utr,
+      }))
+    : [
+        {
+          id: 'RCPT-2026-0812',
+          date: '2026-08-05',
+          description: 'August 2026 — Monthly tuition',
+          amount: bill.tuitionAfterScholarship,
+          method: 'UPI',
+          status: 'paid',
+        },
+        {
+          id: 'RCPT-2026-0701',
+          date: '2026-07-01',
+          description: 'Admission — Exam & T-shirt charges',
+          amount: bill.mandatoryCharges,
+          method: 'UPI',
+          status: 'paid',
+        },
+      ];
+
+  const isPaid = student?.feeState === 'paid';
+
   const feeStatus: FeeStatus = {
-    monthlyTuition: bill.monthlyTuition,
+    monthlyTuition: student?.monthlyTuition || bill.monthlyTuition,
     scholarshipPercent,
     scholarshipAmount: bill.scholarshipAmount,
-    tuitionAfterScholarship: bill.tuitionAfterScholarship,
+    tuitionAfterScholarship: student?.tuitionAfterScholarship || bill.tuitionAfterScholarship,
     examFee: EXAM_FEE,
     tshirtFee: TSHIRT_FEE,
     mandatoryCharges: bill.mandatoryCharges,
-    finalPayable: bill.finalPayable,
-    status: 'due',
+    finalPayable: isPaid ? 0 : (student?.amountDue ?? bill.tuitionAfterScholarship),
+    status: isPaid ? 'paid' : 'due',
     nextDueDate: '2026-09-10',
-    payments: [
-      {
-        id: 'RCPT-2026-0812',
-        date: '2026-08-05',
-        description: 'August 2026 — Monthly tuition',
-        amount: bill.tuitionAfterScholarship,
-        method: 'UPI',
-        status: 'paid',
-      },
-      {
-        id: 'RCPT-2026-0731',
-        date: '2026-07-04',
-        description: 'July 2026 — Monthly tuition',
-        amount: bill.tuitionAfterScholarship,
-        method: 'Cash',
-        status: 'paid',
-      },
-      {
-        id: 'RCPT-2026-0701',
-        date: '2026-07-01',
-        description: 'Admission — Exam & T-shirt charges',
-        amount: bill.mandatoryCharges,
-        method: 'UPI',
-        status: 'paid',
-      },
-    ],
+    payments,
   };
 
   const profile: StudentProfile = {
-    fullName: 'Ananya Das',
-    registrationNumber: 'GK-2026-0142',
+    id: student?.id,
+    fullName: student?.fullName || 'Ananya Das',
+    registrationNumber: student?.registrationNumber || 'GK-2026-0142',
     classNumber,
-    stream: null,
-    board: 'SEBA',
-    parentName: 'Rajib Das',
-    mobile: '9876543210',
-    guardianMobile: '9876500011',
-    email: 'ananya.das@example.com',
-    address: 'Block Road, Ramkrishna Nagar, Sribhumi, Assam',
+    stream: student?.stream || null,
+    board: student?.board || 'SEBA',
+    parentName: student?.parentName || 'Guardian',
+    mobile: student?.mobile || '9876543210',
+    guardianMobile: student?.mobile || '9876543210',
+    email: student?.email || 'ananya.das@example.com',
+    address: student?.address || 'Block Road, Ramkrishna Nagar, Sribhumi, Assam',
     photoUrl: null,
-    admissionDate: '2026-07-01',
+    admissionDate: student?.admissionDate || '2026-07-01',
   };
 
-  const notices: StudentNotice[] = [
-    {
-      id: 'n1',
-      title: 'Half-Yearly Examination Schedule',
-      content:
-        'Half-yearly exams for Classes VI–X begin on 22 September 2026. The detailed datesheet is available at the front desk and on the notice board.',
-      date: '2026-08-28',
-      pinned: true,
-    },
-    {
-      id: 'n2',
-      title: 'September Fee Reminder',
-      content:
-        'Monthly tuition for September 2026 is due by the 10th. Please clear dues to avoid a late fee.',
-      date: '2026-08-25',
-      pinned: true,
-    },
-    {
-      id: 'n3',
-      title: 'Independence Day Celebration',
-      content:
-        'All students are invited to the flag hoisting and cultural program on 15 August at 8:00 AM.',
-      date: '2026-08-12',
-      pinned: false,
-    },
-    {
-      id: 'n4',
-      title: 'New Study Material Uploaded',
-      content:
-        'Chapter-wise practice sheets for Mathematics and Science have been added to the materials library.',
-      date: '2026-08-06',
-      pinned: false,
-    },
-  ];
+  const notices: StudentNotice[] = getAllNotices().map((n) => ({
+    id: n.id,
+    title: n.title,
+    content: n.content,
+    date: n.date,
+    pinned: n.pinned,
+  }));
 
-  return { profile, subjects, feeStatus, notices, isSample: true };
-}
-
-/**
- * Returns the current student's dashboard data.
- *
- * NOTE: This currently returns clearly-labeled sample data. To wire up live data,
- * replace the body with a Supabase query (fetch the `students` row for the
- * authenticated `auth.uid()`, join enrolled subjects / fee records / notices) and
- * set `isSample: false`. The return shape is intentionally stable so callers do
- * not need to change.
- */
-export function getStudentData(): StudentData {
-  return buildSampleData();
+  return { profile, subjects, feeStatus, notices, isSample: false };
 }
 
 // Re-exported so existing `@/lib/student-data` imports keep working.

@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { calculateBill, calculateScholarship, SUBJECT_FEES } from '@/lib/fees';
-
-// Mock data storage (in-memory)
-const admissions: any[] = [];
+import { addAdmission, getAllStudents } from '@/lib/institute-store';
+import { createAdminClient } from '@/lib/supabase/admin';
 
 export async function POST(request: NextRequest) {
   try {
@@ -11,57 +9,108 @@ export async function POST(request: NextRequest) {
     // Validate required fields
     if (!body.fullName || !body.email || !body.phone || !body.currentClass || !body.subjects) {
       return NextResponse.json(
-        { error: 'Missing required fields' },
+        { error: 'Missing required fields: fullName, email, phone, currentClass, subjects' },
         { status: 400 }
       );
     }
 
-    // Server-side fee validation
-    const classNum = parseInt(body.currentClass);
-    const subjectFees = SUBJECT_FEES[classNum] || {};
-    const percentage = parseInt(body.previousPercentage || '0');
-    const scholarship = calculateScholarship(percentage);
+    if (!body.upiUtr || body.upiUtr.trim().length < 6) {
+      return NextResponse.json(
+        { error: 'Valid UPI Transaction / UTR number is required to confirm admission' },
+        { status: 400 }
+      );
+    }
 
-    const selectedSubjectsData = body.subjects.map((subject: string) => ({
-      name: subject,
-      monthly_fee: subjectFees[subject] || 0,
-    }));
+    // 1. Add to unified persistent institute store
+    const { student, receipt } = addAdmission({
+      fullName: body.fullName,
+      email: body.email,
+      phone: body.phone,
+      dob: body.dob,
+      currentClass: body.currentClass,
+      schoolName: body.schoolName,
+      previousPercentage: body.previousPercentage || '0',
+      subjects: body.subjects,
+      address: body.address,
+      city: body.city,
+      state: body.state,
+      pincode: body.pincode,
+      parentName: body.parentName,
+      parentPhone: body.parentPhone,
+      documentType: body.documentType,
+      tshirtSize: body.tshirtSize || 'm',
+      upiUtr: body.upiUtr.trim(),
+    });
 
-    const billing = calculateBill(selectedSubjectsData, scholarship);
-
-    // Create admission record
-    const admission = {
-      id: Math.random().toString(36).substr(2, 9),
-      createdAt: new Date().toISOString(),
-      ...body,
-      billing,
-      status: 'pending',
-    };
-
-    // Mock: Save to "database" (in production, use Supabase)
-    admissions.push(admission);
+    // 2. If Supabase admin client is configured, attempt sync
+    const supabase = createAdminClient();
+    if (supabase) {
+      try {
+        await supabase.from('students').insert([
+          {
+            id: student.id,
+            registration_number: student.registrationNumber,
+            full_name: student.fullName,
+            class_number: student.classNumber,
+            stream: student.stream,
+            board: student.board,
+            parent_name: student.parentName,
+            mobile: student.mobile,
+            email: student.email,
+            previous_percentage: student.previousPercentage,
+            status: 'pending',
+            created_at: new Date().toISOString(),
+          },
+        ]);
+      } catch (sbErr) {
+        console.warn('Supabase sync warning in admission:', sbErr);
+      }
+    }
 
     return NextResponse.json(
       {
         success: true,
-        message: 'Admission form submitted successfully',
-        admissionId: admission.id,
+        message: 'Admission application and payment submitted successfully',
+        student: {
+          id: student.id,
+          registrationNumber: student.registrationNumber,
+          fullName: student.fullName,
+          classNumber: student.classNumber,
+          email: student.email,
+          monthlyTuition: student.monthlyTuition,
+          tuitionAfterScholarship: student.tuitionAfterScholarship,
+          mandatoryCharges: student.mandatoryCharges,
+          totalPaid: receipt.amount,
+          admissionDate: student.admissionDate,
+        },
+        receipt: {
+          id: receipt.id,
+          amount: receipt.amount,
+          utr: receipt.utr,
+          date: receipt.date,
+          method: receipt.method,
+        },
+        credentials: {
+          identifier: student.registrationNumber,
+          email: student.email,
+          defaultPassword: 'gk2026',
+        },
       },
       { status: 201 }
     );
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error processing admission:', error);
     return NextResponse.json(
-      { error: 'Failed to process admission form' },
+      { error: error?.message || 'Failed to process admission form' },
       { status: 500 }
     );
   }
 }
 
-// Get all admissions (mock endpoint)
 export async function GET() {
+  const students = getAllStudents();
   return NextResponse.json({
-    admissions,
-    total: admissions.length,
+    students,
+    total: students.length,
   });
 }

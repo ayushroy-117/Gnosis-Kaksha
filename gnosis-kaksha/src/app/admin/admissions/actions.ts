@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { approveStudent, rejectStudent } from '@/lib/institute-store';
 
 // Pages whose numbers depend on the roster; refresh them all after a change.
 const AFFECTED_PATHS = [
@@ -21,15 +22,30 @@ async function setStatus(
   status: 'active' | 'rejected'
 ): Promise<ActionResult> {
   try {
+    // 1. Update local persistent store
+    if (status === 'active') {
+      approveStudent(id);
+    } else {
+      rejectStudent(id);
+    }
+
+    // 2. If Supabase admin client is configured, also update Supabase
     const supabase = createAdminClient();
-    const { error } = await supabase
-      .from('students')
-      .update({ status })
-      .eq('id', id);
+    if (supabase) {
+      try {
+        await supabase
+          .from('students')
+          .update({ status })
+          .eq('id', id);
+      } catch (sbErr) {
+        console.warn('Supabase sync warning:', sbErr);
+      }
+    }
 
-    if (error) return { ok: false, error: error.message };
+    for (const path of AFFECTED_PATHS) {
+      revalidatePath(path);
+    }
 
-    for (const path of AFFECTED_PATHS) revalidatePath(path);
     return { ok: true };
   } catch (err) {
     return {

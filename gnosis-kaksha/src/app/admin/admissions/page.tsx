@@ -1,7 +1,8 @@
-import { UserPlus, Check, X, GraduationCap } from 'lucide-react';
+import { UserPlus, GraduationCap, CreditCard } from 'lucide-react';
 import { SampleDataBanner } from '@/components/dashboard/SampleDataBanner';
 import { Badge } from '@/components/dashboard/Badge';
 import { EmptyState } from '@/components/dashboard/EmptyState';
+import { ApprovalActions } from './_components/ApprovalActions';
 import {
   getAdminData,
   classLabel,
@@ -49,31 +50,18 @@ export default function AdminAdmissionsPage() {
                       <h2 className="text-lg font-semibold text-[#1A2B4A]">
                         {s.fullName}
                       </h2>
-                      <Badge tone="amber">Pending</Badge>
+                      <Badge tone="amber">Pending Approval</Badge>
+                      <span className="text-xs font-mono bg-gray-100 text-gray-700 px-2 py-0.5 rounded">
+                        {s.registrationNumber}
+                      </span>
                     </div>
                     <p className="text-sm text-[#718096]">
                       {classLabel(s)} · {s.board} · Applied {formatDate(s.admissionDate)}
                     </p>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    disabled
-                    title="Coming soon"
-                    className="inline-flex cursor-not-allowed items-center gap-1.5 rounded-lg bg-[#10B981] px-4 py-2 text-sm font-semibold text-white opacity-60"
-                  >
-                    <Check size={16} /> Approve
-                  </button>
-                  <button
-                    type="button"
-                    disabled
-                    title="Coming soon"
-                    className="inline-flex cursor-not-allowed items-center gap-1.5 rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-[#4A5568] opacity-60"
-                  >
-                    <X size={16} /> Reject
-                  </button>
-                </div>
+
+                <ApprovalActions id={s.id} name={s.fullName} />
               </div>
 
               <div className="grid grid-cols-1 gap-x-8 gap-y-4 px-6 py-5 sm:grid-cols-2 lg:grid-cols-3">
@@ -94,12 +82,29 @@ export default function AdminAdmissionsPage() {
                   label="Monthly Tuition"
                   value={`${formatINR(s.tuitionAfterScholarship)} / month`}
                 />
+                <div className="rounded-lg bg-[#F0FDF4] p-3 border border-[#BBF7D0]">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-green-800 flex items-center gap-1.5">
+                    <CreditCard size={14} /> UPI Payment Verification
+                  </p>
+                  <p className="mt-1 text-sm font-mono font-bold text-green-900">
+                    UTR: {s.upiUtr || 'Paid at counter'}
+                  </p>
+                  <p className="text-xs text-green-700 mt-0.5">
+                    Admission Fee: ₹{s.mandatoryCharges + s.tuitionAfterScholarship} (verified via UPI)
+                  </p>
+                </div>
+                {s.tshirtSize && (
+                  <Detail label="T-Shirt Size" value={s.tshirtSize.toUpperCase()} />
+                )}
+                {s.city && (
+                  <Detail label="Location" value={`${s.city}, ${s.state || 'Assam'}`} />
+                )}
                 <div className="sm:col-span-2 lg:col-span-3">
                   <p className="text-xs font-semibold uppercase tracking-wide text-[#718096]">
-                    Subjects
+                    Enrolled Subjects
                   </p>
                   <div className="mt-1.5 flex flex-wrap gap-2">
-                    {s.subjects.map((sub) => (
+                    {s.subjects.map((sub: string) => (
                       <span
                         key={sub}
                         className="rounded-full bg-[#F7FAFC] px-3 py-1 text-xs font-medium text-[#4A5568] ring-1 ring-inset ring-gray-200"
