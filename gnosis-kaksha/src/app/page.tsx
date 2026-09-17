@@ -3,34 +3,107 @@
 import Link from 'next/link';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { BookOpen, Users, Award, Globe, Play, ChevronRight, Star, Zap } from 'lucide-react';
+import { BookOpen, Users, Award, Globe, Play, ChevronRight, Star, Zap, Mail, Phone, MapPin, Send, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 
 export default function Home() {
   const [teachers, setTeachers] = useState<any[]>([]);
   const [gallery, setGallery] = useState<any[]>([]);
+  const [contactForm, setContactForm] = useState({ name: '', email: '', phone: '', message: '' });
+  const [contactLoading, setContactLoading] = useState(false);
+  const [contactStatus, setContactStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   useEffect(() => {
-    setTeachers([
-      { id: 1, name: 'Ankur Kumar Nath', subject: 'Founder & CEO | Physics', qualification: 'B.Sc in Physics Hons', image: '/teachers/ankur.webp' },
-      { id: 2, name: 'Jumki Roy', subject: 'English Teacher cum Accountant', qualification: 'B.A., M.A', image: '/teachers/jumki.png' },
-      { id: 3, name: 'Susmita Nath', subject: 'Bengali Teacher', qualification: 'B.A, M.A, B.Ed', image: '/teachers/susmita.png' },
-      { id: 4, name: 'Barnali Paul', subject: 'Biology Teacher', qualification: 'M.Sc (Gold), B.Sc (Silver), B.Ed, C.I.E.T', image: '/teachers/barnali.jpg' },
-      { id: 5, name: 'Riya Nath', subject: 'History Teacher', qualification: 'B.A', image: '/teachers/riya nath.png' },
-      { id: 6, name: 'Joydeep Dey', subject: 'Maths Teacher', qualification: 'B.Sc in Maths Hons, B.Ed', image: '/teachers/joydeep dey.png' },
-      { id: 7, name: 'Anal Choudhury', subject: 'English Teacher', qualification: 'B.A, D.I.L.D, A1E1', image: '/teachers/anal.png' },
-      { id: 8, name: 'Abu Sahid', subject: 'Economics Teacher', qualification: 'B.A, M.A in Economics, B.Ed', image: '/teachers/abu sahid.png' },
-      { id: 9, name: 'Md Ali Hasan', subject: 'History & Political Science Teacher', qualification: 'B.A., M.A in History', image: '/teachers/md ali hasan.png' },
-      { id: 10, name: 'Sanjib Paul', subject: 'Maths Teacher', qualification: 'B.Sc', image: '/teachers/sanjib.png' },
-    ]);
+    // Fetch live teachers with graceful fallback
+    fetch('/api/teachers')
+      .then((res) => (res.ok ? res.json() : Promise.reject()))
+      .then((data) => {
+        if (data.teachers && data.teachers.length > 0) {
+          setTeachers(
+            data.teachers.map((t: any) => ({
+              id: t.id,
+              name: t.name,
+              subject: t.role,
+              qualification: t.qualification,
+              image: t.photo_url || '/teachers/ankur.webp',
+            }))
+          );
+        } else {
+          throw new Error('No teachers');
+        }
+      })
+      .catch(() => {
+        setTeachers([
+          { id: 1, name: 'Ankur Kumar Nath', subject: 'Founder & CEO | Physics', qualification: 'B.Sc in Physics Hons', image: '/teachers/ankur.webp' },
+          { id: 2, name: 'Jumki Roy', subject: 'English Teacher cum Accountant', qualification: 'B.A., M.A', image: '/teachers/jumki.png' },
+          { id: 3, name: 'Susmita Nath', subject: 'Bengali Teacher', qualification: 'B.A, M.A, B.Ed', image: '/teachers/susmita.png' },
+          { id: 4, name: 'Barnali Paul', subject: 'Biology Teacher', qualification: 'M.Sc (Gold), B.Sc (Silver), B.Ed, C.I.E.T', image: '/teachers/barnali.jpg' },
+          { id: 5, name: 'Riya Nath', subject: 'History Teacher', qualification: 'B.A', image: '/teachers/riya nath.png' },
+          { id: 6, name: 'Joydeep Dey', subject: 'Maths Teacher', qualification: 'B.Sc in Maths Hons, B.Ed', image: '/teachers/joydeep dey.png' },
+          { id: 7, name: 'Anal Choudhury', subject: 'English Teacher', qualification: 'B.A, D.I.L.D, A1E1', image: '/teachers/anal.png' },
+          { id: 8, name: 'Abu Sahid', subject: 'Economics Teacher', qualification: 'B.A, M.A in Economics, B.Ed', image: '/teachers/abu sahid.png' },
+          { id: 9, name: 'Md Ali Hasan', subject: 'History & Political Science Teacher', qualification: 'B.A., M.A in History', image: '/teachers/md ali hasan.png' },
+          { id: 10, name: 'Sanjib Paul', subject: 'Maths Teacher', qualification: 'B.Sc', image: '/teachers/sanjib.png' },
+        ]);
+      });
 
-    setGallery([
-      { id: 1, image: '/gallery/gallery_1776019382_a5185fce.png', caption: 'Gallery Image 1' },
-      { id: 2, image: '/gallery/gallery_1776019823_d13fdc8a.png', caption: 'Gallery Image 2' },
-      { id: 3, image: '/gallery/gallery_1776019930_4c42e5b9.png', caption: 'Gallery Image 3' },
-      { id: 4, image: '/gallery/gallery_1776020047_d2448a35.png', caption: 'Gallery Image 4' },
-    ]);
+    // Fetch live gallery with graceful fallback
+    fetch('/api/gallery?limit=4')
+      .then((res) => (res.ok ? res.json() : Promise.reject()))
+      .then((data) => {
+        if (data.images && data.images.length > 0) {
+          setGallery(
+            data.images.map((img: any) => ({
+              id: img.id,
+              image: img.image_url,
+              caption: img.title || img.caption,
+            }))
+          );
+        } else {
+          throw new Error('No gallery');
+        }
+      })
+      .catch(() => {
+        setGallery([
+          { id: 1, image: '/gallery/gallery_1776019382_a5185fce.png', caption: 'Gallery Image 1' },
+          { id: 2, image: '/gallery/gallery_1776019823_d13fdc8a.png', caption: 'Gallery Image 2' },
+          { id: 3, image: '/gallery/gallery_1776019930_4c42e5b9.png', caption: 'Gallery Image 3' },
+          { id: 4, image: '/gallery/gallery_1776020047_d2448a35.png', caption: 'Gallery Image 4' },
+        ]);
+      });
   }, []);
+
+  const handleContactSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setContactLoading(true);
+    setContactStatus(null);
+
+    try {
+      const res = await fetch('/api/contact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(contactForm),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to send message');
+      }
+
+      setContactStatus({
+        type: 'success',
+        message: 'Thank you! Your message has been sent successfully.',
+      });
+      setContactForm({ name: '', email: '', phone: '', message: '' });
+    } catch (err: any) {
+      setContactStatus({
+        type: 'error',
+        message: err.message || 'Unable to send your message. Please try again.',
+      });
+    } finally {
+      setContactLoading(false);
+    }
+  };
 
   return (
     <div className="bg-white">
@@ -261,6 +334,117 @@ export default function Home() {
               Apply Now <ChevronRight className="h-5 w-5" />
             </Button>
           </Link>
+        </div>
+      </section>
+
+      {/* Contact Section */}
+      <section className="py-28 px-4 bg-linear-to-b from-blue-50 to-white" id="contact">
+        <div className="max-w-4xl mx-auto">
+          <div className="text-center mb-16">
+            <span className="text-[#1295D8] font-bold text-sm uppercase tracking-widest">Get In Touch</span>
+            <h2 className="text-5xl font-black text-[#1A2B4A] mt-4 mb-6">Contact Us</h2>
+            <p className="text-xl text-[#4A5568] font-medium">Have questions about admissions or courses? Send us a message.</p>
+            <div className="h-1 w-24 bg-linear-to-r from-[#1295D8] to-orange-400 mx-auto mt-6"></div>
+          </div>
+
+          <div className="bg-white rounded-3xl p-8 md:p-12 shadow-xl border border-gray-100">
+            {contactStatus && (
+              <div
+                className={`p-4 rounded-xl mb-6 flex items-center gap-3 ${
+                  contactStatus.type === 'success'
+                    ? 'bg-green-50 text-green-800 border border-green-200'
+                    : 'bg-red-50 text-red-800 border border-red-200'
+                }`}
+              >
+                {contactStatus.type === 'success' ? (
+                  <CheckCircle2 className="h-5 w-5 text-green-600 shrink-0" />
+                ) : (
+                  <AlertCircle className="h-5 w-5 text-red-600 shrink-0" />
+                )}
+                <span className="font-medium text-sm">{contactStatus.message}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleContactSubmit} className="space-y-6">
+              <div className="grid md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-bold text-[#1A2B4A] mb-2">
+                    Your Name <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={contactForm.name}
+                    onChange={(e) => setContactForm({ ...contactForm, name: e.target.value })}
+                    placeholder="Enter your full name"
+                    className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#1295D8] transition"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-[#1A2B4A] mb-2">Email Address</label>
+                  <input
+                    type="email"
+                    value={contactForm.email}
+                    onChange={(e) => setContactForm({ ...contactForm, email: e.target.value })}
+                    placeholder="you@example.com"
+                    className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#1295D8] transition"
+                  />
+                </div>
+              </div>
+
+              <div className="grid md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-bold text-[#1A2B4A] mb-2">Phone Number</label>
+                  <input
+                    type="tel"
+                    value={contactForm.phone}
+                    onChange={(e) => setContactForm({ ...contactForm, phone: e.target.value })}
+                    placeholder="10-digit mobile number"
+                    className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#1295D8] transition"
+                  />
+                </div>
+                <div className="flex flex-col justify-end">
+                  <p className="text-xs text-gray-500">
+                    Our team typically responds within 24 hours during working days.
+                  </p>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-[#1A2B4A] mb-2">
+                  Message <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  required
+                  rows={4}
+                  value={contactForm.message}
+                  onChange={(e) => setContactForm({ ...contactForm, message: e.target.value })}
+                  placeholder="How can we help you?"
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#1295D8] transition resize-none"
+                />
+              </div>
+
+              <div className="flex justify-end">
+                <Button
+                  type="submit"
+                  disabled={contactLoading}
+                  className="bg-linear-to-r from-[#1295D8] to-blue-600 text-white px-8 py-3 rounded-xl font-bold hover:shadow-lg transition flex items-center gap-2"
+                >
+                  {contactLoading ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Sending...
+                    </>
+                  ) : (
+                    <>
+                      <Send className="h-4 w-4" />
+                      Send Message
+                    </>
+                  )}
+                </Button>
+              </div>
+            </form>
+          </div>
         </div>
       </section>
     </div>

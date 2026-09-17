@@ -60,10 +60,27 @@ export interface InstituteNotice {
   pinned: boolean;
 }
 
+export type AllocationStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+
+export interface SubjectAllocationRequest {
+  id: string;
+  studentId: string;
+  studentName: string;
+  registrationNumber: string;
+  subject: string;
+  classNumber: number;
+  requestedBy: string; // teacher name/email
+  status: AllocationStatus;
+  rejectionNote?: string;
+  createdAt: string;
+  resolvedAt?: string;
+}
+
 interface StoreData {
   students: RosterStudent[];
   transactions: Transaction[];
   notices: InstituteNotice[];
+  allocationRequests: SubjectAllocationRequest[];
 }
 
 const INITIAL_ROSTER: RosterStudent[] = [
@@ -399,11 +416,37 @@ const INITIAL_NOTICES: InstituteNotice[] = [
   },
 ];
 
+const INITIAL_ALLOCATION_REQUESTS: SubjectAllocationRequest[] = [
+  {
+    id: 'alloc-demo1',
+    studentId: 'stu-0142',
+    studentName: 'Ananya Das',
+    registrationNumber: 'GK-2026-0142',
+    subject: 'History',
+    classNumber: 10,
+    requestedBy: 'Ankur Kumar Nath',
+    status: 'PENDING',
+    createdAt: '2026-09-12',
+  },
+  {
+    id: 'alloc-demo2',
+    studentId: 'stu-0129',
+    studentName: 'Imran Hussain',
+    registrationNumber: 'GK-2026-0129',
+    subject: 'Biology',
+    classNumber: 11,
+    requestedBy: 'Ankur Kumar Nath',
+    status: 'PENDING',
+    createdAt: '2026-09-13',
+  },
+];
+
 // Singleton in-memory store
 let memoryStore: StoreData = {
   students: [...INITIAL_ROSTER],
   transactions: [...INITIAL_TRANSACTIONS],
   notices: [...INITIAL_NOTICES],
+  allocationRequests: [...INITIAL_ALLOCATION_REQUESTS],
 };
 
 const BROWSER_KEY = 'gk_institute_store';
@@ -415,6 +458,10 @@ function loadStore(): StoreData {
       if (raw) {
         const parsed = JSON.parse(raw);
         if (parsed.students && parsed.transactions && parsed.notices) {
+          // Backwards compat: old stores won't have allocationRequests
+          if (!parsed.allocationRequests) {
+            parsed.allocationRequests = [];
+          }
           memoryStore = parsed;
           return memoryStore;
         }
@@ -650,6 +697,57 @@ export function deleteNotice(id: string): boolean {
   const idx = store.notices.findIndex((n) => n.id === id);
   if (idx === -1) return false;
   store.notices.splice(idx, 1);
+  saveStore(store);
+  return true;
+}
+
+// ---------------------------------------------------------------------------
+// Subject Allocation Requests
+// ---------------------------------------------------------------------------
+
+export function getAllocationRequests(): SubjectAllocationRequest[] {
+  const store = loadStore();
+  return store.allocationRequests;
+}
+
+export function createAllocationRequest(
+  input: Omit<SubjectAllocationRequest, 'id' | 'status' | 'createdAt'>
+): SubjectAllocationRequest {
+  const store = loadStore();
+  const request: SubjectAllocationRequest = {
+    ...input,
+    id: `alloc-${Date.now().toString(36)}`,
+    status: 'PENDING',
+    createdAt: new Date().toISOString().split('T')[0],
+  };
+  store.allocationRequests = [request, ...(store.allocationRequests || [])];
+  saveStore(store);
+  return request;
+}
+
+export function resolveAllocationRequest(
+  id: string,
+  resolution: 'APPROVED' | 'REJECTED',
+  rejectionNote?: string
+): boolean {
+  const store = loadStore();
+  const req = store.allocationRequests?.find((r) => r.id === id);
+  if (!req) return false;
+
+  req.status = resolution;
+  req.resolvedAt = new Date().toISOString().split('T')[0];
+  if (resolution === 'REJECTED' && rejectionNote) {
+    req.rejectionNote = rejectionNote;
+  }
+
+  if (resolution === 'APPROVED') {
+    // Add subject to the student's enrollment if not already there
+    const student = store.students.find((s) => s.id === req.studentId);
+    if (student && !student.subjects.includes(req.subject)) {
+      student.subjects = [...student.subjects, req.subject];
+    }
+  }
+
   saveStore(store);
   return true;
 }

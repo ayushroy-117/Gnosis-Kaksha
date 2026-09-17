@@ -41,6 +41,12 @@ export function Navbar() {
             <Link href="/notices" className="text-gray-700 hover:text-[#1295D8] transition">
               Notices
             </Link>
+            <Link href="/study-material" className="text-gray-700 hover:text-[#1295D8] transition">
+              Study Material
+            </Link>
+            <Link href="/tools/bg-remover" className="text-gray-700 hover:text-[#1295D8] transition">
+              Tools
+            </Link>
             <Link href="/admission" className="bg-gradient-to-r from-[#1295D8] to-[#50B4F2] text-white px-6 py-2 rounded-lg hover:shadow-lg transition">
               Admission
             </Link>
@@ -87,6 +93,20 @@ export function Navbar() {
               onClick={() => setIsOpen(false)}
             >
               Notices
+            </Link>
+            <Link
+              href="/study-material"
+              className="block px-3 py-2 rounded-md text-gray-700 hover:bg-gray-100 hover:text-[#1295D8] transition"
+              onClick={() => setIsOpen(false)}
+            >
+              Study Material
+            </Link>
+            <Link
+              href="/tools/bg-remover"
+              className="block px-3 py-2 rounded-md text-gray-700 hover:bg-gray-100 hover:text-[#1295D8] transition"
+              onClick={() => setIsOpen(false)}
+            >
+              Tools
             </Link>
             <Link
               href="/admission"

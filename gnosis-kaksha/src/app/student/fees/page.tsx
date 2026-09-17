@@ -12,6 +12,7 @@ import {
   X,
   CreditCard,
   ShieldCheck,
+  MessageSquare,
 } from 'lucide-react';
 import { SectionCard } from '@/components/dashboard/SectionCard';
 import { Badge } from '@/components/dashboard/Badge';
@@ -145,13 +146,25 @@ export default function StudentFeesPage() {
             {isCleared ? 'All Dues Paid' : 'Payment due'}
           </Badge>
           {!isCleared ? (
-            <button
-              type="button"
-              onClick={() => setPayModalOpen(true)}
-              className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-[#1295D8] to-[#2E5EAA] px-5 py-2.5 text-sm font-semibold text-white transition hover:shadow-lg active:scale-95"
-            >
-              <CreditCard size={16} /> Pay Monthly Tuition
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <a
+                href={`https://wa.me/919435012345?text=${encodeURIComponent(
+                  `Hello Accounts Desk, I am ${profile.fullName} (Reg: ${profile.registrationNumber}, Class ${profile.classNumber}). I have a query regarding my pending tuition fee of ₹${payableAmount}.`
+                )}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-600/30 bg-emerald-50 px-3.5 py-2.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 transition"
+              >
+                <MessageSquare size={14} /> WhatsApp Help
+              </a>
+              <button
+                type="button"
+                onClick={() => setPayModalOpen(true)}
+                className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-[#1295D8] to-[#2E5EAA] px-5 py-2.5 text-sm font-semibold text-white transition hover:shadow-lg active:scale-95"
+              >
+                <CreditCard size={16} /> Pay Monthly Tuition
+              </button>
+            </div>
           ) : (
             <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-green-700 bg-green-50 px-3 py-1.5 rounded-lg border border-green-200">
               <CheckCircle2 size={15} /> All Cleared for September
@@ -420,7 +433,7 @@ export default function StudentFeesPage() {
             </div>
 
             {/* Action Bar (hidden when printing) */}
-            <div className="mt-6 flex gap-3 print:hidden">
+            <div className="mt-6 flex flex-wrap gap-2.5 print:hidden">
               <Button
                 type="button"
                 variant="outline"
@@ -429,6 +442,16 @@ export default function StudentFeesPage() {
               >
                 Close
               </Button>
+              <a
+                href={`https://wa.me/919435012345?text=${encodeURIComponent(
+                  `*Fee Payment Receipt — Gnosis Kaksha*\nStudent: ${profile.fullName} (${profile.registrationNumber})\nAmount: ₹${activeReceipt.amount}\nMode: ${activeReceipt.method} (UTR: ${activeReceipt.utr || 'N/A'})\nDate: ${formatDate(activeReceipt.date)}\nReceipt ID: ${activeReceipt.id}`
+                )}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 text-sm font-semibold transition"
+              >
+                <MessageSquare size={16} /> Share via WhatsApp
+              </a>
               <Button
                 type="button"
                 onClick={() => window.print()}

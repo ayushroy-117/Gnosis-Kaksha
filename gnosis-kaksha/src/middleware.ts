@@ -18,5 +18,5 @@ export function middleware() {
 
 // Configure which routes to run middleware on
 export const config = {
-  matcher: ['/student/:path*', '/accountant/:path*', '/admin/:path*'],
+  matcher: ['/student/:path*', '/accountant/:path*', '/admin/:path*', '/teacher/:path*'],
 };

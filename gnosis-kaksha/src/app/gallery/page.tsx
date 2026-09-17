@@ -7,21 +7,35 @@ import { X } from 'lucide-react';
 export default function Gallery() {
   const [gallery, setGallery] = useState<any[]>([]);
   const [selectedImage, setSelectedImage] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const [activeTag, setActiveTag] = useState<string>('All');
 
   useEffect(() => {
-    // Gallery images from public/gallery folder
-    setGallery([
-      { id: 1, image: '/gallery/gallery_1776019382_a5185fce.png', caption: 'Gallery Image 1' },
-      { id: 2, image: '/gallery/gallery_1776019823_d13fdc8a.png', caption: 'Gallery Image 2' },
-      { id: 3, image: '/gallery/gallery_1776019930_4c42e5b9.png', caption: 'Gallery Image 3' },
-      { id: 4, image: '/gallery/gallery_1776020047_d2448a35.png', caption: 'Gallery Image 4' },
-      { id: 5, image: '/gallery/gallery_1776020143_4325a91a.png', caption: 'Gallery Image 5' },
-      { id: 6, image: '/gallery/gallery_1776020213_0a9e1d13.png', caption: 'Gallery Image 6' },
-      { id: 7, image: '/gallery/gallery_1776020277_ac993f67.png', caption: 'Gallery Image 7' },
-      { id: 8, image: '/gallery/gallery_1776020610_c718f9e7.png', caption: 'Gallery Image 8' },
-      { id: 9, image: '/gallery/gallery_1776115167_c8706ab5.jpg', caption: 'Gallery Image 9' },
-    ]);
+    fetch('/api/gallery')
+      .then((res) => {
+        if (!res.ok) throw new Error('Failed to fetch gallery');
+        return res.json();
+      })
+      .then((data) => {
+        const mapped = (data.images ?? []).map((item: any) => ({
+          id: item.id,
+          image: item.image_url,
+          caption: item.title,
+          subtitle: item.caption,
+          event_tag: item.event_tag ?? null,
+        }));
+        setGallery(mapped);
+      })
+      .catch(() => setError(true))
+      .finally(() => setLoading(false));
   }, []);
+
+  // Derive unique event tags for filter tabs
+  const allTags = ['All', ...Array.from(new Set(gallery.map((i) => i.event_tag).filter(Boolean))) as string[]];
+
+  const filteredGallery =
+    activeTag === 'All' ? gallery : gallery.filter((i) => i.event_tag === activeTag);
 
   return (
     <div className="min-h-screen bg-white py-12 px-4">
@@ -31,26 +45,57 @@ export default function Gallery() {
           <p className="text-xl text-[#4A5568]">Explore our learning environment and student activities</p>
         </div>
 
-        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {gallery.map((item) => (
-            <div
-              key={item.id}
-              onClick={() => setSelectedImage(item)}
-              className="relative rounded-lg overflow-hidden group cursor-pointer bg-white border border-gray-200 shadow-sm hover:shadow-md"
-            >
-              <img
-                src={item.image}
-                alt={item.caption}
-                className="w-full aspect-square object-cover group-hover:scale-110 transition duration-300"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-4">
-                <p className="text-white font-semibold">
-                  {item.caption}
-                </p>
+        {/* Event tag filter tabs */}
+        {!loading && !error && allTags.length > 1 && (
+          <div className="flex flex-wrap justify-center gap-3 mb-10">
+            {allTags.map((tag) => (
+              <button
+                key={tag}
+                onClick={() => setActiveTag(tag)}
+                className={`px-5 py-2 rounded-full text-sm font-semibold border-2 transition ${
+                  activeTag === tag
+                    ? 'bg-[#1295D8] border-[#1295D8] text-white'
+                    : 'bg-white border-[#1295D8] text-[#1295D8] hover:bg-[#1295D8]/10'
+                }`}
+              >
+                {tag}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {loading ? (
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {Array.from({ length: 9 }).map((_, i) => (
+              <div key={i} className="animate-pulse rounded-lg overflow-hidden aspect-square bg-gray-200 shadow-sm" />
+            ))}
+          </div>
+        ) : error ? (
+          <div className="text-center py-24">
+            <p className="text-[#4A5568] text-lg font-medium">Gallery content unavailable. Please try again later.</p>
+          </div>
+        ) : (
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {filteredGallery.map((item) => (
+              <div
+                key={item.id}
+                onClick={() => setSelectedImage(item)}
+                className="relative rounded-lg overflow-hidden group cursor-pointer bg-white border border-gray-200 shadow-sm hover:shadow-md"
+              >
+                <img
+                  src={item.image}
+                  alt={item.caption}
+                  className="w-full aspect-square object-cover group-hover:scale-110 transition duration-300"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-4">
+                  <p className="text-white font-semibold">
+                    {item.caption}
+                  </p>
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Lightbox Modal */}
@@ -67,7 +112,9 @@ export default function Gallery() {
               className="w-full rounded-lg mb-4"
             />
             <h3 className="text-2xl font-bold mb-2 text-[#1A2B4A]">{selectedImage.caption}</h3>
-            <p className="text-[#4A5568]">Learn about our educational activities and student engagement programs.</p>
+            <p className="text-[#4A5568]">
+              {selectedImage.subtitle || 'Learn about our educational activities and student engagement programs.'}
+            </p>
           </div>
         )}
       </Modal>

@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { useAuth } from '@/hooks/useAuth';
 import { getUserRole } from '@/lib/auth';
-import { GraduationCap, Shield, Calculator, Zap } from 'lucide-react';
+import { GraduationCap, Shield, Calculator, Zap, BookOpen } from 'lucide-react';
 
 // Allow email OR registration number (e.g., GK-2026-0142)
 const loginSchema = z.object({
@@ -58,6 +58,8 @@ export function LoginForm({ onSwitchToRegister, onLoginSuccess }: LoginFormProps
         router.push('/admin/dashboard');
       } else if (role === 'accountant') {
         router.push('/accountant/dashboard');
+      } else if (role === 'teacher') {
+        router.push('/teacher/dashboard');
       } else {
         router.push('/student/dashboard');
       }
@@ -91,7 +93,7 @@ export function LoginForm({ onSwitchToRegister, onLoginSuccess }: LoginFormProps
             1-Click Demo Login
           </span>
         </div>
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           <button
             type="button"
             onClick={() => handleDemoLogin('student@gnosiskaksha.in', 'student')}
@@ -111,7 +113,7 @@ export function LoginForm({ onSwitchToRegister, onLoginSuccess }: LoginFormProps
           >
             <Shield size={20} className="text-[#2E5EAA] mb-1 group-hover:scale-110 transition" />
             <span className="text-xs font-bold text-[#1A2B4A]">Admin</span>
-            <span className="text-[10px] text-gray-500">Admissions & Ops</span>
+            <span className="text-[10px] text-gray-500">Admissions &amp; Ops</span>
           </button>
 
           <button
@@ -122,7 +124,18 @@ export function LoginForm({ onSwitchToRegister, onLoginSuccess }: LoginFormProps
           >
             <Calculator size={20} className="text-[#10B981] mb-1 group-hover:scale-110 transition" />
             <span className="text-xs font-bold text-[#1A2B4A]">Accountant</span>
-            <span className="text-[10px] text-gray-500">Fees & Ledger</span>
+            <span className="text-[10px] text-gray-500">Fees &amp; Ledger</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleDemoLogin('teacher@gnosiskaksha.in', 'teacher')}
+            disabled={isLoading || !!demoLoading}
+            className="flex flex-col items-center justify-center p-2.5 rounded-lg bg-white border border-[#CDE6F7] hover:border-[#1295D8] hover:bg-[#EBF5FB] transition shadow-xs group"
+          >
+            <BookOpen size={20} className="text-[#F59E0B] mb-1 group-hover:scale-110 transition" />
+            <span className="text-xs font-bold text-[#1A2B4A]">Teacher</span>
+            <span className="text-[10px] text-gray-500">Class Portal</span>
           </button>
         </div>
         {demoLoading && (

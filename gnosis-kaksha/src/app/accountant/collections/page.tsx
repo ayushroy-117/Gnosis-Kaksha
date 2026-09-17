@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Wallet, IndianRupee, CheckCircle2, X, CreditCard, Banknote } from 'lucide-react';
+import { Wallet, IndianRupee, CheckCircle2, X, CreditCard, Banknote, MessageSquare, Send } from 'lucide-react';
 import { SampleDataBanner } from '@/components/dashboard/SampleDataBanner';
 import { SectionCard } from '@/components/dashboard/SectionCard';
 import { Badge } from '@/components/dashboard/Badge';
@@ -9,6 +9,8 @@ import { EmptyState } from '@/components/dashboard/EmptyState';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
+import { WhatsAppReminderModal } from '@/components/dashboard/WhatsAppReminderModal';
+import { BatchWhatsAppModal } from '@/components/dashboard/BatchWhatsAppModal';
 import {
   getAccountantData,
   classLabel,
@@ -21,6 +23,8 @@ export default function AccountantCollectionsPage() {
   const initialData = getAccountantData();
   const [roster, setRoster] = useState<RosterStudent[]>(initialData.roster);
   const [selectedStudent, setSelectedStudent] = useState<RosterStudent | null>(null);
+  const [whatsAppStudent, setWhatsAppStudent] = useState<RosterStudent | null>(null);
+  const [showBatchWhatsApp, setShowBatchWhatsApp] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<'Cash' | 'UPI'>('Cash');
   const [utrNumber, setUtrNumber] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
@@ -106,11 +110,22 @@ export default function AccountantCollectionsPage() {
             {formatINR(collectedThisMonth)}
           </p>
         </div>
-        <div className="rounded-[12px] border border-gray-200 bg-white p-5 shadow-sm">
-          <p className="text-sm text-[#718096]">Outstanding dues</p>
-          <p className="mt-1 text-2xl font-bold text-[#F59E0B]">
-            {formatINR(pendingDues)}
-          </p>
+        <div className="rounded-[12px] border border-gray-200 bg-white p-5 shadow-sm flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-sm text-[#718096]">Outstanding dues</p>
+            <p className="mt-1 text-2xl font-bold text-[#F59E0B]">
+              {formatINR(pendingDues)}
+            </p>
+          </div>
+          {pendingDues > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowBatchWhatsApp(true)}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 px-3 py-2 text-xs font-semibold text-white shadow-xs transition"
+            >
+              <Send size={13} /> Broadcast WhatsApp
+            </button>
+          )}
         </div>
       </div>
 
@@ -157,13 +172,23 @@ export default function AccountantCollectionsPage() {
                     </td>
                     <td className="px-6 py-4 text-right">
                       {s.feeState === 'due' ? (
-                        <button
-                          type="button"
-                          onClick={() => setSelectedStudent(s)}
-                          className="inline-flex items-center gap-1.5 rounded-lg bg-[#1295D8] hover:bg-[#2E5EAA] px-3 py-1.5 text-xs font-semibold text-white transition shadow-xs"
-                        >
-                          <IndianRupee size={14} /> Record Payment
-                        </button>
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setWhatsAppStudent(s)}
+                            className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 px-2.5 py-1.5 text-xs font-semibold text-white transition shadow-xs"
+                            title="Send WhatsApp payment reminder"
+                          >
+                            <MessageSquare size={13} /> WhatsApp
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedStudent(s)}
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-[#1295D8] hover:bg-[#2E5EAA] px-3 py-1.5 text-xs font-semibold text-white transition shadow-xs"
+                          >
+                            <IndianRupee size={14} /> Record Payment
+                          </button>
+                        </div>
                       ) : (
                         <span className="inline-flex items-center gap-1 text-xs font-semibold text-green-700">
                           <CheckCircle2 size={14} /> Cleared
@@ -246,6 +271,22 @@ export default function AccountantCollectionsPage() {
             </form>
           </div>
         </div>
+      )}
+
+      {/* WhatsApp Reminder Modal (Single Student) */}
+      {whatsAppStudent && (
+        <WhatsAppReminderModal
+          student={whatsAppStudent}
+          onClose={() => setWhatsAppStudent(null)}
+        />
+      )}
+
+      {/* WhatsApp Broadcast Modal (Batch) */}
+      {showBatchWhatsApp && (
+        <BatchWhatsAppModal
+          students={roster}
+          onClose={() => setShowBatchWhatsApp(false)}
+        />
       )}
     </div>
   );

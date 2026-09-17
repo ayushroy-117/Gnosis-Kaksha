@@ -8,6 +8,7 @@ const NAV_ITEMS: DashboardNavItem[] = [
   { label: 'Students', href: '/admin/students', icon: Users },
   { label: 'Admissions', href: '/admin/admissions', icon: UserPlus },
   { label: 'Notices', href: '/admin/notices', icon: Megaphone },
+  { label: 'Staff Accounts', href: '/admin/staff', icon: UserPlus },
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {

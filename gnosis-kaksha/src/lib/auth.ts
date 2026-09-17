@@ -10,12 +10,12 @@ const supabase: SupabaseClient | null = isSupabaseConfigured
   ? createClient(supabaseUrl!, supabaseAnonKey!)
   : null;
 
-export type UserRole = 'student' | 'admin' | 'accountant';
+export type UserRole = 'student' | 'admin' | 'accountant' | 'teacher';
 
 export interface SignUpData {
   email: string;
   password: string;
-  role: 'admin' | 'accountant';
+  role: 'admin' | 'accountant' | 'teacher';
 }
 
 export interface AuthResponse {
@@ -38,6 +38,7 @@ export const DEMO_ACCOUNTS: { role: UserRole; email: string; label: string; name
   { role: 'student', email: 'student@gnosiskaksha.in', label: 'Student Demo', name: 'Ananya Das' },
   { role: 'admin', email: 'admin@gnosiskaksha.in', label: 'Admin Demo', name: 'Principal / Admin' },
   { role: 'accountant', email: 'accountant@gnosiskaksha.in', label: 'Accountant Demo', name: 'Institute Accountant' },
+  { role: 'teacher', email: 'teacher@gnosiskaksha.in', label: 'Teacher Demo', name: 'Ankur Kumar Nath' },
 ];
 
 // In-memory / localStorage helpers for mock auth mode
@@ -138,7 +139,57 @@ export async function signIn(identifier: string, password?: string): Promise<Aut
   // If identifier is a registration number like GK-2026-XXXX
   const isRegNumber = cleanId.toUpperCase().startsWith('GK-');
 
-  if (supabase && !isRegNumber && lowerId.includes('@')) {
+  // Check if it is one of the built-in demo accounts
+  const demoMatch = DEMO_ACCOUNTS.find((d) => d.email.toLowerCase() === lowerId);
+  const isDemoAccount = Boolean(demoMatch);
+
+  // If using demo account or registration number or offline mode, handle immediately
+  if (isDemoAccount || !supabase || isRegNumber) {
+    let role: UserRole = demoMatch ? demoMatch.role : 'student';
+    let fullName = demoMatch ? demoMatch.name : 'Gnosis Student';
+    let regNo: string | undefined = undefined;
+
+    if (!demoMatch) {
+      if (lowerId.includes('admin')) {
+        role = 'admin';
+        fullName = 'Institute Administrator';
+      } else if (lowerId.includes('accountant')) {
+        role = 'accountant';
+        fullName = 'Institute Accountant';
+      } else if (lowerId.includes('teacher')) {
+        role = 'teacher';
+        fullName = 'Institute Teacher';
+      } else {
+        role = 'student';
+        if (isRegNumber) {
+          regNo = cleanId.toUpperCase();
+          fullName = `Student (${regNo})`;
+        } else {
+          fullName = cleanId.split('@')[0];
+        }
+      }
+    }
+
+    const user: UserData = {
+      id: `usr-${role}-${Date.now().toString(36)}`,
+      email: lowerId.includes('@') ? lowerId : `${lowerId}@student.gnosiskaksha.in`,
+      role,
+      fullName,
+      registrationNumber: regNo,
+    };
+
+    setStoredLocalUser(user);
+    notifyListeners(user);
+
+    return {
+      success: true,
+      message: 'Logged in successfully',
+      user,
+    };
+  }
+
+  // Real Supabase Auth for registered non-demo emails
+  if (supabase && lowerId.includes('@')) {
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
         email: cleanId,
@@ -163,47 +214,14 @@ export async function signIn(identifier: string, password?: string): Promise<Aut
         user,
       };
     } catch (error: unknown) {
-      // Fall through to mock if Supabase fails (e.g. network/credentials invalid)
-      console.warn('Supabase sign-in failed, checking mock credentials:', error);
+      const msg = error instanceof Error ? error.message : 'An unexpected error occurred';
+      return { success: false, error: msg };
     }
   }
-
-  // Mock / Offline Auth Mode
-  let role: UserRole = 'student';
-  let fullName = 'Gnosis Student';
-  let regNo: string | undefined = undefined;
-
-  if (lowerId.includes('admin') || lowerId === 'admin@gnosiskaksha.in') {
-    role = 'admin';
-    fullName = 'Institute Administrator';
-  } else if (lowerId.includes('accountant') || lowerId === 'accountant@gnosiskaksha.in') {
-    role = 'accountant';
-    fullName = 'Institute Accountant';
-  } else {
-    role = 'student';
-    if (isRegNumber) {
-      regNo = cleanId.toUpperCase();
-      fullName = `Student (${regNo})`;
-    } else {
-      fullName = cleanId.split('@')[0];
-    }
-  }
-
-  const user: UserData = {
-    id: `usr-${role}-${Date.now().toString(36)}`,
-    email: lowerId.includes('@') ? lowerId : `${lowerId}@student.gnosiskaksha.in`,
-    role,
-    fullName,
-    registrationNumber: regNo,
-  };
-
-  setStoredLocalUser(user);
-  notifyListeners(user);
 
   return {
-    success: true,
-    message: 'Logged in successfully',
-    user,
+    success: false,
+    error: 'Please enter a valid email or Registration Number.',
   };
 }
 
@@ -232,6 +250,12 @@ export async function signOut(): Promise<AuthResponse> {
  * Get the current authenticated user
  */
 export async function getCurrentUser(): Promise<UserData | null> {
+  // Check fast local storage first (instant client resolution)
+  const localUser = getStoredLocalUser();
+  if (localUser) {
+    return localUser;
+  }
+
   if (supabase) {
     try {
       const { data, error } = await supabase.auth.getUser();
@@ -247,7 +271,7 @@ export async function getCurrentUser(): Promise<UserData | null> {
     }
   }
 
-  return getStoredLocalUser();
+  return null;
 }
 
 /**
