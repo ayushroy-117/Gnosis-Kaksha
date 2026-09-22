@@ -101,10 +101,10 @@ export function DashboardLayout({
   };
 
   return (
-    <div className="min-h-[calc(100vh-4rem)] bg-[#F7FAFC]">
-      <div className="mx-auto flex max-w-7xl">
+    <div className="min-h-[calc(100vh-4rem)] bg-[#F7FAFC] print:bg-white print:min-h-0">
+      <div className="mx-auto flex max-w-7xl print:max-w-none print:m-0 print:p-0 print:block">
         {/* Desktop sidebar */}
-        <aside className="sticky top-16 hidden h-[calc(100vh-4rem)] w-64 shrink-0 flex-col border-r border-gray-200 bg-white px-4 py-6 md:flex">
+        <aside className="sticky top-16 hidden h-[calc(100vh-4rem)] w-64 shrink-0 flex-col border-r border-gray-200 bg-white px-4 py-6 md:flex print:hidden">
           <div className="mb-6 px-2">
             <p className="text-xs font-semibold uppercase tracking-wide text-[#718096]">
               {portalName}
@@ -126,9 +126,9 @@ export function DashboardLayout({
         </aside>
 
         {/* Main column */}
-        <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex min-w-0 flex-1 flex-col print:block print:w-full">
           {/* Topbar */}
-          <div className="sticky top-16 z-30 flex items-center justify-between gap-4 border-b border-gray-200 bg-white px-4 py-3 md:px-6">
+          <div className="sticky top-16 z-30 flex items-center justify-between gap-4 border-b border-gray-200 bg-white px-4 py-3 md:px-6 print:hidden">
             <div className="flex items-center gap-3">
               <button
                 type="button"
@@ -157,7 +157,7 @@ export function DashboardLayout({
             </div>
           </div>
 
-          <main className="flex-1 px-4 py-6 md:px-6 md:py-8">{children}</main>
+          <main className="flex-1 px-4 py-6 md:px-6 md:py-8 print:p-0 print:m-0 print:w-full">{children}</main>
         </div>
       </div>
 
