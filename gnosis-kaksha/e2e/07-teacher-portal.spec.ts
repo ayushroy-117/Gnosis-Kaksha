@@ -15,10 +15,12 @@ test.describe('Teacher Portal', () => {
     await expect(page.getByText(/Teacher Overview/i)).toBeVisible();
   });
 
-  test('teacher sidebar has Overview, Students, Allocations', async ({ page }) => {
+  test('teacher sidebar has Overview, Attendance, Students, Allocations, and Profile', async ({ page }) => {
     await expect(page.getByRole('link', { name: /Overview/i }).first()).toBeVisible();
+    await expect(page.getByRole('link', { name: /Attendance/i }).first()).toBeVisible();
     await expect(page.getByRole('link', { name: /Students/i }).first()).toBeVisible();
     await expect(page.getByRole('link', { name: /Allocations/i }).first()).toBeVisible();
+    await expect(page.getByRole('link', { name: /Profile/i }).first()).toBeVisible();
   });
 
   test('teacher dashboard shows stat cards', async ({ page }) => {
@@ -44,7 +46,7 @@ test.describe('Teacher Portal', () => {
 
   test('teacher students page shows subject pills', async ({ page }) => {
     await page.goto('/teacher/students');
-    await expect(page.getByText(/Mathematics|Science|Physics/i).first()).toBeVisible();
+    await expect(page.locator('table').getByText(/Mathematics|Science|Physics/i).first()).toBeVisible();
   });
 
   test('teacher allocations page loads', async ({ page }) => {
@@ -114,4 +116,44 @@ test.describe('Teacher Portal', () => {
     // If we couldn't find a student with free subjects, the test is a no-op (pass silently)
     expect(true).toBeTruthy();
   });
+
+  test('teacher students page opens scannable barcode modal', async ({ page }) => {
+    await page.goto('/teacher/students');
+    const scanButton = page.getByRole('button', { name: /Scan/i }).first();
+    await expect(scanButton).toBeVisible();
+    await scanButton.click();
+
+    // Verify modal is open with Barcode and QR
+    await expect(page.getByText(/Student Identity & Barcode/i)).toBeVisible();
+    await expect(page.getByText(/Official Student Barcode/i)).toBeVisible();
+    await expect(page.getByText(/Digital Verification QR/i)).toBeVisible();
+  });
+
+  test('teacher profile page renders faculty identity card and employment details', async ({ page }) => {
+    await page.goto('/teacher/profile');
+    await expect(page.getByText(/Faculty Profile & ID Card/i)).toBeVisible();
+    await expect(page.getByText(/GNOSIS KAKSHA/i).first()).toBeVisible();
+    await expect(page.getByText(/A PLACE FOR EXCELLENCE/i).first()).toBeVisible();
+    await expect(page.getByText(/Job Joining Date/i)).toBeVisible();
+    await expect(page.getByText(/Employment Status/i)).toBeVisible();
+    await expect(page.getByText(/Print Faculty ID Card/i).first()).toBeVisible();
+  });
+
+  test('teacher attendance page loads with manual fallback mode and allows marking attendance', async ({ page }) => {
+    await page.goto('/teacher/attendance');
+    await expect(page.getByText(/Subject Attendance/i)).toBeVisible();
+    await expect(page.getByText(/Biometric Machine Unavailable|Manual Mode Active/i).first()).toBeVisible();
+
+    // Verify bulk buttons and Save Attendance button
+    await expect(page.getByRole('button', { name: /Mark All Present/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Save Attendance/i }).first()).toBeVisible();
+
+    // Click Mark All Present
+    await page.getByRole('button', { name: /Mark All Present/i }).click();
+
+    // Click Save Attendance
+    await page.getByRole('button', { name: /Save Attendance/i }).first().click();
+    await expect(page.getByText(/successfully saved to records/i)).toBeVisible({ timeout: 5_000 });
+  });
 });
+
