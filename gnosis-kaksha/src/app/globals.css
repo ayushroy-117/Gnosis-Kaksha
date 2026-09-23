@@ -44,15 +44,9 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 html {
   font-size: var(--font-base);
+  color-scheme: light;
 }
 
 body {
@@ -60,4 +54,35 @@ body {
   color: var(--foreground);
   font-family: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
   line-height: var(--line-height-normal);
+}
+
+/* ── Global Form Input & Placeholder Visibility ── */
+input,
+textarea,
+select {
+  color: #0f172a !important;
+  background-color: #ffffff;
+}
+
+::placeholder {
+  color: #64748b !important; /* Slate-500: crisp, fully visible, high contrast */
+  opacity: 1 !important;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #64748b !important;
+  opacity: 1 !important;
+  -webkit-text-fill-color: #64748b;
+}
+
+/* Chrome autofill fix: prevent text washed out on autocomplete */
+input:-webkit-autofill,
+input:-webkit-autofill:hover, 
+input:-webkit-autofill:focus,
+textarea:-webkit-autofill,
+select:-webkit-autofill {
+  -webkit-text-fill-color: #0f172a !important;
+  -webkit-box-shadow: 0 0 0px 1000px #ffffff inset !important;
+  transition: background-color 5000s ease-in-out 0s;
 }
