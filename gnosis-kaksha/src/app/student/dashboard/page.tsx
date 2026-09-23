@@ -7,6 +7,7 @@ import {
   ArrowRight,
   Pin,
   User,
+  Paperclip,
 } from 'lucide-react';
 import { StatCard } from '@/components/dashboard/StatCard';
 import { SectionCard } from '@/components/dashboard/SectionCard';
@@ -227,6 +228,11 @@ export default function StudentDashboardPage() {
                 <div className="flex items-center gap-2">
                   {n.pinned && <Pin size={13} className="text-[#1295D8]" />}
                   <p className="text-sm font-semibold text-[#1A2B4A]">{n.title}</p>
+                  {n.attachmentUrl && (
+                    <span className="inline-flex items-center gap-0.5 text-[10px] text-[#1295D8] bg-blue-50 px-1.5 py-0.5 rounded font-medium ml-auto">
+                      <Paperclip size={10} /> Attached
+                    </span>
+                  )}
                 </div>
                 <p className="mt-0.5 line-clamp-2 text-xs text-[#718096]">{n.content}</p>
                 <p className="mt-1 text-xs text-[#718096]">{formatDate(n.date)}</p>

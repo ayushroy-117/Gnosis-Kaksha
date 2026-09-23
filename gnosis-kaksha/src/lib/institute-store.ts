@@ -58,6 +58,9 @@ export interface InstituteNotice {
   date: string;
   audience: 'All' | 'Students' | 'Parents' | 'Staff';
   pinned: boolean;
+  attachmentUrl?: string | null;
+  attachmentName?: string | null;
+  attachmentSize?: string | null;
 }
 
 export type AllocationStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
@@ -386,6 +389,9 @@ const INITIAL_NOTICES: InstituteNotice[] = [
     date: '2026-08-28',
     audience: 'All',
     pinned: true,
+    attachmentUrl: '/study-material/Half_Yearly_Datesheet_2026.pdf',
+    attachmentName: 'Half_Yearly_Datesheet_2026.pdf',
+    attachmentSize: '340 KB',
   },
   {
     id: 'in2',
@@ -413,6 +419,9 @@ const INITIAL_NOTICES: InstituteNotice[] = [
     date: '2026-08-06',
     audience: 'Students',
     pinned: false,
+    attachmentUrl: '/study-material/Math_Science_Practice_Sheets.pdf',
+    attachmentName: 'Math_Science_Practice_Sheets.pdf',
+    attachmentSize: '1.2 MB',
   },
 ];
 

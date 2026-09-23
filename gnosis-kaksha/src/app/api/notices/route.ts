@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { getAllNotices } from '@/lib/institute-store';
 
 // GET /api/notices — returns active notices, pinned first
 // Query params:
@@ -10,32 +11,67 @@ export async function GET(request: NextRequest) {
     const audience = searchParams.get('audience');
 
     const supabase = createAdminClient();
-    if (!supabase) {
-      return NextResponse.json({ error: 'Database not configured' }, { status: 503 });
+    if (supabase) {
+      let query = supabase
+        .from('notices')
+        .select('*')
+        .eq('is_active', true)
+        .order('is_pinned', { ascending: false })
+        .order('published_at', { ascending: false });
+
+      if (audience && audience !== 'All') {
+        query = query.in('audience', ['All', audience]);
+      }
+
+      const { data, error } = await query;
+      if (!error && data && data.length > 0) {
+        return NextResponse.json({
+          notices: data.map((n: any) => ({
+            id: n.id,
+            title: n.title,
+            content: n.content,
+            published_at: n.published_at || n.created_at || new Date().toISOString(),
+            is_pinned: Boolean(n.is_pinned),
+            audience: n.audience,
+            external_url: n.external_url || null,
+          })),
+        });
+      }
     }
 
-    let query = supabase
-      .from('notices')
-      .select('*')
-      .eq('is_active', true)
-      .order('is_pinned', { ascending: false })
-      .order('published_at', { ascending: false });
-
-    // Filter by audience if specified (always include 'All' notices)
+    // Local / fallback store
+    let local = getAllNotices();
     if (audience && audience !== 'All') {
-      query = query.in('audience', ['All', audience]);
+      local = local.filter((n) => n.audience === 'All' || n.audience === audience);
     }
 
-    const { data, error } = await query;
-
-    if (error) {
-      console.error('Supabase notices fetch error:', error);
-      return NextResponse.json({ error: 'Failed to fetch notices' }, { status: 500 });
-    }
-
-    return NextResponse.json({ notices: data || [] });
+    return NextResponse.json({
+      notices: local.map((n) => ({
+        id: n.id,
+        title: n.title,
+        content: n.content,
+        published_at: n.date,
+        is_pinned: n.pinned,
+        audience: n.audience,
+        external_url: n.attachmentUrl || null,
+        attachmentName: n.attachmentName || null,
+        attachmentSize: n.attachmentSize || null,
+      })),
+    });
   } catch (error: any) {
     console.error('Notices API error:', error);
-    return NextResponse.json({ error: error?.message || 'Unexpected error' }, { status: 500 });
+    return NextResponse.json({
+      notices: getAllNotices().map((n) => ({
+        id: n.id,
+        title: n.title,
+        content: n.content,
+        published_at: n.date,
+        is_pinned: n.pinned,
+        audience: n.audience,
+        external_url: n.attachmentUrl || null,
+        attachmentName: n.attachmentName || null,
+        attachmentSize: n.attachmentSize || null,
+      })),
+    });
   }
 }

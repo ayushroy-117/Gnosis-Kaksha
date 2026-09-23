@@ -66,6 +66,9 @@ export interface StudentNotice {
   content: string;
   date: string;
   pinned: boolean;
+  attachmentUrl?: string | null;
+  attachmentName?: string | null;
+  attachmentSize?: string | null;
 }
 
 export interface StudentData {
@@ -196,6 +199,9 @@ export function getStudentData(userIdentifier?: string): StudentData {
     content: n.content,
     date: n.date,
     pinned: n.pinned,
+    attachmentUrl: n.attachmentUrl ?? null,
+    attachmentName: n.attachmentName ?? null,
+    attachmentSize: n.attachmentSize ?? null,
   }));
 
   return { profile, subjects, feeStatus, notices, isSample: false };
