@@ -21,6 +21,7 @@ import { Input } from '@/components/ui/Input';
 import { getStudentData, formatINR, formatDate, FeePayment } from '@/lib/student-data';
 import { useAuth } from '@/hooks/useAuth';
 import { QRCodeSVG } from 'qrcode.react';
+import { OfficialFeeReceiptModal } from '@/components/dashboard/OfficialFeeReceiptModal';
 import toast from 'react-hot-toast';
 
 const UPI_ID = 'gnosiskaksha@upi';
@@ -353,115 +354,21 @@ export default function StudentFeesPage() {
 
       {/* OFFICIAL PRINTABLE FEE RECEIPT MODAL */}
       {activeReceipt && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
-          <div className="relative w-full max-w-lg rounded-2xl bg-white p-8 shadow-2xl border border-gray-200 print:fixed print:inset-0 print:m-0 print:p-8 print:border-none print:shadow-none">
-            {/* Close button (hidden in print) */}
-            <button
-              type="button"
-              onClick={() => setActiveReceipt(null)}
-              className="absolute right-4 top-4 p-1.5 rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition print:hidden"
-            >
-              <X size={20} />
-            </button>
-
-            {/* Receipt Content */}
-            <div className="border-b-2 border-gray-900 pb-4 text-center">
-              <h2 className="text-2xl font-black tracking-tight text-[#1A2B4A]">GNOSIS KAKSHA</h2>
-              <p className="text-xs text-gray-600">Premier Coaching & Academic Institute · Ramkrishna Nagar, Assam</p>
-              <p className="text-xs font-bold uppercase tracking-wider text-[#1295D8] mt-1">Official Fee Receipt</p>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4 text-xs py-4 border-b border-gray-200">
-              <div>
-                <span className="text-gray-500">Receipt No:</span>
-                <p className="font-mono font-bold text-sm text-[#1A2B4A]">{activeReceipt.id}</p>
-              </div>
-              <div className="text-right">
-                <span className="text-gray-500">Date:</span>
-                <p className="font-semibold text-gray-800">{activeReceipt.date}</p>
-              </div>
-              <div>
-                <span className="text-gray-500">Student Name:</span>
-                <p className="font-bold text-[#1A2B4A]">{profile.fullName}</p>
-              </div>
-              <div className="text-right">
-                <span className="text-gray-500">Reg. Number:</span>
-                <p className="font-mono font-bold text-[#1295D8]">{profile.registrationNumber}</p>
-              </div>
-              <div>
-                <span className="text-gray-500">Class / Stream:</span>
-                <p className="font-semibold text-gray-800">Class {profile.classNumber} {profile.stream ? `· ${profile.stream}` : ''}</p>
-              </div>
-              <div className="text-right">
-                <span className="text-gray-500">Payment Mode:</span>
-                <p className="font-semibold text-gray-800">{activeReceipt.method} {activeReceipt.utr ? `(UTR: ${activeReceipt.utr})` : ''}</p>
-              </div>
-            </div>
-
-            {/* Table */}
-            <div className="py-4 border-b border-gray-200">
-              <div className="flex justify-between text-xs font-bold text-gray-600 uppercase border-b pb-1">
-                <span>Description</span>
-                <span>Amount</span>
-              </div>
-              <div className="flex justify-between text-sm py-2">
-                <span className="text-gray-800">{activeReceipt.description}</span>
-                <span className="font-bold text-[#1A2B4A]">₹{activeReceipt.amount}</span>
-              </div>
-            </div>
-
-            {/* Total Paid & Stamp */}
-            <div className="flex justify-between items-center py-4 border-b border-gray-200">
-              <div>
-                <span className="inline-flex items-center gap-1 text-[11px] font-bold text-green-700 bg-green-50 border border-green-200 px-2 py-1 rounded">
-                  <ShieldCheck size={14} /> PAYMENT VERIFIED
-                </span>
-              </div>
-              <div className="text-right">
-                <span className="text-xs text-gray-500">Net Amount Paid</span>
-                <p className="text-2xl font-black text-[#1295D8]">₹{activeReceipt.amount}</p>
-              </div>
-            </div>
-
-            {/* Signatory Footer */}
-            <div className="pt-6 flex justify-between items-end text-[10px] text-gray-500">
-              <p>Computer-generated receipt · Gnosis Kaksha</p>
-              <div className="text-center">
-                <div className="w-28 border-b border-gray-400 mb-1" />
-                <span>Authorized Signatory</span>
-              </div>
-            </div>
-
-            {/* Action Bar (hidden when printing) */}
-            <div className="mt-6 flex flex-wrap gap-2.5 print:hidden">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setActiveReceipt(null)}
-                className="flex-1"
-              >
-                Close
-              </Button>
-              <a
-                href={`https://wa.me/919435012345?text=${encodeURIComponent(
-                  `*Fee Payment Receipt — Gnosis Kaksha*\nStudent: ${profile.fullName} (${profile.registrationNumber})\nAmount: ₹${activeReceipt.amount}\nMode: ${activeReceipt.method} (UTR: ${activeReceipt.utr || 'N/A'})\nDate: ${formatDate(activeReceipt.date)}\nReceipt ID: ${activeReceipt.id}`
-                )}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 text-sm font-semibold transition"
-              >
-                <MessageSquare size={16} /> Share via WhatsApp
-              </a>
-              <Button
-                type="button"
-                onClick={() => window.print()}
-                className="flex-1 bg-[#1295D8] hover:bg-[#2E5EAA]"
-              >
-                <Printer size={16} className="mr-1.5" /> Print / Save PDF
-              </Button>
-            </div>
-          </div>
-        </div>
+        <OfficialFeeReceiptModal
+          receipt={activeReceipt}
+          student={{
+            fullName: profile.fullName,
+            registrationNumber: profile.registrationNumber,
+            classNumber: profile.classNumber,
+            stream: profile.stream,
+            board: profile.board,
+            parentName: profile.parentName,
+            mobile: profile.mobile,
+            address: profile.address,
+          }}
+          onClose={() => setActiveReceipt(null)}
+          copyType="STUDENT COPY"
+        />
       )}
     </div>
   );

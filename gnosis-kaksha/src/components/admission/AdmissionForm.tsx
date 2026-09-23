@@ -238,8 +238,9 @@ export function AdmissionForm() {
               <ShieldCheck size={14} /> Admission Application Confirmed
             </span>
             <h1 className="text-2xl font-black text-[#1A2B4A]">GNOSIS KAKSHA</h1>
-            <p className="text-xs text-[#718096]">Coaching & Academic Institute · Ramkrishna Nagar, Assam</p>
-            <p className="text-sm font-semibold text-[#1295D8] mt-1">Official Admission Slip & Fee Acknowledgment</p>
+            <p className="text-xs font-extrabold uppercase tracking-widest text-[#1295D8] mt-0.5">“A PLACE FOR EXCELLENCE”</p>
+            <p className="text-[11px] text-[#718096] mt-1">Main Road, Ramkrishna Nagar, Assam – 788713 • www.gnosiskaksha.cloud</p>
+            <p className="text-sm font-semibold text-[#1A2B4A] mt-2">Official Admission Slip &amp; Fee Acknowledgment</p>
           </div>
 
           {/* Registration Number Badge */}
