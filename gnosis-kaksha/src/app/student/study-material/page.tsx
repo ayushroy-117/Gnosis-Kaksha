@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useMemo } from 'react';
+import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import {
   BookOpen,
   FileText,
@@ -8,22 +10,17 @@ import {
   Eye,
   Search,
   Filter,
-  Sparkles,
-  CheckCircle2,
   X,
-  ExternalLink,
+  Hourglass,
+  XCircle,
+  ArrowRight,
 } from 'lucide-react';
-import { SectionCard } from '@/components/dashboard/SectionCard';
-import { Badge } from '@/components/dashboard/Badge';
 import { Button } from '@/components/ui/Button';
-import {
-  getAllStudyMaterials,
-  StudyMaterial,
-  MaterialCategory,
-} from '@/lib/study-materials';
-import { getStudentData } from '@/lib/student-data';
-import { useAuth } from '@/hooks/useAuth';
-import toast from 'react-hot-toast';
+import { LoadingState, ErrorState } from '@/components/dashboard/PageState';
+import type { StudyMaterial, MaterialCategory } from '@/lib/study-materials';
+import { formatDate } from '@/lib/student-data';
+import { useStudentPortal } from '@/hooks/useStudentPortal';
+import { useApi } from '@/hooks/useApi';
 
 const CATEGORIES: ('All' | MaterialCategory)[] = [
   'All',
@@ -35,28 +32,28 @@ const CATEGORIES: ('All' | MaterialCategory)[] = [
 ];
 
 export default function StudentStudyMaterialPage() {
-  const { user } = useAuth();
-  const studentData = useMemo(() => {
-    const identifier = user?.registrationNumber || user?.email || user?.id;
-    return getStudentData(identifier);
-  }, [user]);
+  const { data, error, loading, reload, withAs } = useStudentPortal();
+  const initialSubject = useSearchParams().get('subject') ?? '';
+  const profile = data?.profile;
+  const subjects = data?.subjects ?? [];
+  const isActive = profile?.enrollmentStatus === 'active';
+  const studentClass = profile?.classNumber;
 
-  const { profile, subjects } = studentData;
-  const studentClass = profile.classNumber;
-
-  const [materials, setMaterials] = useState<StudyMaterial[]>(() =>
-    getAllStudyMaterials()
-  );
   const [activeTab, setActiveTab] = useState<'my_class' | 'all'>('my_class');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(initialSubject);
   const [previewMaterial, setPreviewMaterial] = useState<StudyMaterial | null>(null);
+
+  const materialsUrl = !isActive || studentClass === undefined
+    ? null
+    : activeTab === 'my_class'
+      ? `/api/study-material?classNumber=${studentClass}`
+      : '/api/study-material';
+  const materialsApi = useApi<{ materials: StudyMaterial[] }>(materialsUrl);
+  const materials = useMemo(() => materialsApi.data?.materials ?? [], [materialsApi.data]);
 
   const filtered = useMemo(() => {
     return materials.filter((item) => {
-      if (activeTab === 'my_class' && item.classNumber !== studentClass) {
-        return false;
-      }
       if (selectedCategory !== 'All' && item.category !== selectedCategory) {
         return false;
       }
@@ -69,28 +66,60 @@ export default function StudentStudyMaterialPage() {
       }
       return true;
     });
-  }, [materials, activeTab, studentClass, selectedCategory, searchQuery]);
+  }, [materials, selectedCategory, searchQuery]);
 
   const handleDownload = (item: StudyMaterial) => {
-    setMaterials((prev) =>
-      prev.map((m) => (m.id === item.id ? { ...m, downloads: m.downloads + 1 } : m))
+    materialsApi.setData((prev) =>
+      prev
+        ? { materials: prev.materials.map((m) => (m.id === item.id ? { ...m, downloads: m.downloads + 1 } : m)) }
+        : prev
     );
-    fetch(`/api/study-material?download=${item.id}`).catch(() => {});
-
-    // Create dummy PDF download
-    const dummyContent = `%PDF-1.4\n1 0 obj\n<< /Title (${item.title}) >>\nendobj\n%%EOF`;
-    const blob = new Blob([dummyContent], { type: 'application/pdf' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${item.title.toLowerCase().replace(/[^a-z0-9]/g, '-')}.pdf`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-
-    toast.success(`Downloaded: ${item.title}`);
+    window.location.assign(item.fileUrl);
   };
+
+  if (loading && !data) return <LoadingState label="Loading study material…" />;
+  if (error) return <ErrorState message={error.message} onRetry={reload} />;
+  if (!data || !profile) return null;
+
+  if (!isActive) {
+    const pending = profile.enrollmentStatus === 'pending';
+    return (
+      <div className="space-y-6">
+        <h1 className="text-3xl font-bold text-[#1A2B4A]">Study Materials</h1>
+        <div
+          className={`flex flex-col gap-4 rounded-[12px] border p-6 sm:flex-row sm:items-start ${
+            pending ? 'border-amber-200 bg-amber-50' : 'border-red-200 bg-red-50'
+          }`}
+        >
+          <div
+            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${
+              pending ? 'bg-amber-100 text-amber-600' : 'bg-red-100 text-red-600'
+            }`}
+          >
+            {pending ? <Hourglass size={22} /> : <XCircle size={22} />}
+          </div>
+          <div className="flex-1">
+            <h2 className="text-lg font-semibold text-[#1A2B4A]">
+              {pending ? 'Admission under review' : 'Application not approved'}
+            </h2>
+            <p className="mt-1 text-sm text-[#4A5568]">
+              {pending
+                ? 'Your admission payment is awaiting verification by the office. Study material will unlock once it is approved.'
+                : 'Your admission application was not approved. Please contact the institute office for details.'}
+            </p>
+            {pending && (
+              <Link
+                href={withAs('/student/fees')}
+                className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-[#1295D8] hover:underline"
+              >
+                View payment status <ArrowRight size={15} />
+              </Link>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -114,7 +143,7 @@ export default function StudentStudyMaterialPage() {
                 : 'text-gray-600 hover:text-gray-900'
             }`}
           >
-            Class {studentClass} ({materials.filter((m) => m.classNumber === studentClass).length})
+            Class {studentClass}{activeTab === 'my_class' && materialsApi.data ? ` (${materials.length})` : ''}
           </button>
           <button
             type="button"
@@ -125,7 +154,7 @@ export default function StudentStudyMaterialPage() {
                 : 'text-gray-600 hover:text-gray-900'
             }`}
           >
-            All Classes ({materials.length})
+            All Classes{activeTab === 'all' && materialsApi.data ? ` (${materials.length})` : ''}
           </button>
         </div>
       </div>
@@ -170,14 +199,20 @@ export default function StudentStudyMaterialPage() {
       </div>
 
       {/* Materials List */}
-      {filtered.length === 0 ? (
+      {materialsApi.loading && !materialsApi.data ? (
+        <LoadingState label="Loading materials…" />
+      ) : materialsApi.error ? (
+        <ErrorState message={materialsApi.error.message} onRetry={materialsApi.reload} />
+      ) : filtered.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-gray-300 bg-white p-12 text-center">
           <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 text-gray-400">
             <BookOpen size={24} />
           </div>
           <h3 className="mt-4 text-base font-bold text-[#1A2B4A]">No study materials found</h3>
           <p className="mt-1 text-sm text-gray-500">
-            No materials match your current category or search query.
+            {materials.length === 0
+              ? 'No study material has been published for this selection yet.'
+              : 'No materials match your current category or search query.'}
           </p>
         </div>
       ) : (
@@ -278,13 +313,13 @@ export default function StudentStudyMaterialPage() {
                 </p>
                 <p className="text-sm text-gray-700">{previewMaterial.description}</p>
                 <p className="text-xs text-gray-500 mt-2">
-                  Uploaded by: <b>{previewMaterial.uploadedBy}</b> on {previewMaterial.createdAt}
+                  Uploaded by: <b>{previewMaterial.uploadedBy}</b> on {formatDate(previewMaterial.createdAt)}
                 </p>
               </div>
 
               <div className="rounded-xl border-2 border-dashed border-gray-300 p-6 text-center bg-[#FBFDFE]">
                 <FileText size={32} className="mx-auto text-[#1295D8] mb-2" />
-                <p className="text-sm font-bold text-[#1A2B4A]">PDF Document ({previewMaterial.fileSize})</p>
+                <p className="text-sm font-bold text-[#1A2B4A]">{previewMaterial.fileType} Document ({previewMaterial.fileSize})</p>
                 <p className="text-xs text-gray-500 mt-1">
                   Verified study resource for Gnosis Kaksha enrolled students.
                 </p>
@@ -308,7 +343,7 @@ export default function StudentStudyMaterialPage() {
                 }}
                 className="flex items-center gap-1.5"
               >
-                <Download size={14} /> Download PDF ({previewMaterial.fileSize})
+                <Download size={14} /> Download {previewMaterial.fileType} ({previewMaterial.fileSize})
               </Button>
             </div>
           </div>

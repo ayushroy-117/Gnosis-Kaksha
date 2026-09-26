@@ -1,68 +1,108 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ClipboardCheck, CheckCircle2, X, AlertCircle } from 'lucide-react';
 import { SectionCard } from '@/components/dashboard/SectionCard';
 import { Badge } from '@/components/dashboard/Badge';
 import { EmptyState } from '@/components/dashboard/EmptyState';
+import { LoadingState, ErrorState } from '@/components/dashboard/PageState';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { useApi, apiFetch, ApiError } from '@/hooks/useApi';
 import {
-  getAllocationRequests,
-  resolveAllocationRequest,
-  getStudentById,
-  getAllTransactions,
+  formatINR,
+  formatDate,
+  receiptLabel,
+  type AccountantData,
   type SubjectAllocationRequest,
-} from '@/lib/institute-store';
-import { classLabel, formatINR, formatDate } from '@/lib/institute-data';
+  type Transaction,
+} from '@/lib/institute-data';
 import toast from 'react-hot-toast';
 
+const STATUS_BADGE: Record<Transaction['status'], { tone: 'green' | 'amber' | 'red' | 'gray'; label: string }> = {
+  verified: { tone: 'green', label: 'Verified' },
+  pending: { tone: 'amber', label: 'Pending' },
+  rejected: { tone: 'red', label: 'Rejected' },
+  failed: { tone: 'gray', label: 'Failed' },
+};
+
 export default function AccountantAllocationsPage() {
-  const [requests, setRequests] = useState<SubjectAllocationRequest[]>(
-    getAllocationRequests().filter((r) => r.status === 'PENDING')
-  );
-  const [resolved, setResolved] = useState<SubjectAllocationRequest[]>(
-    getAllocationRequests().filter((r) => r.status !== 'PENDING')
-  );
+  const allocationsApi = useApi<{ allocations: SubjectAllocationRequest[] }>('/api/allocations');
+  const financeApi = useApi<AccountantData>('/api/data/accountant');
   const [rejectTarget, setRejectTarget] = useState<SubjectAllocationRequest | null>(null);
   const [rejectionNote, setRejectionNote] = useState('');
   const [isProcessing, setIsProcessing] = useState<string | null>(null);
-  const allTransactions = getAllTransactions();
 
-  const handleApprove = async (req: SubjectAllocationRequest) => {
-    setIsProcessing(req.id);
-    const ok = resolveAllocationRequest(req.id, 'APPROVED');
-    if (ok) {
-      const updated = { ...req, status: 'APPROVED' as const, resolvedAt: new Date().toISOString().split('T')[0] };
-      setRequests((prev) => prev.filter((r) => r.id !== req.id));
-      setResolved((prev) => [updated, ...prev]);
-      toast.success(`Approved: ${req.subject} for ${req.studentName}`);
-    } else {
-      toast.error('Failed to approve request.');
+  const allocations = useMemo(() => allocationsApi.data?.allocations ?? [], [allocationsApi.data]);
+  const requests = useMemo(() => allocations.filter((r) => r.status === 'PENDING'), [allocations]);
+  const resolved = useMemo(() => allocations.filter((r) => r.status !== 'PENDING'), [allocations]);
+  const rosterById = useMemo(
+    () => new Map((financeApi.data?.roster ?? []).map((s) => [s.id, s])),
+    [financeApi.data]
+  );
+  const txnsByStudent = useMemo(() => {
+    const map = new Map<string, Transaction[]>();
+    for (const t of financeApi.data?.transactions ?? []) {
+      const list = map.get(t.studentId) ?? [];
+      list.push(t);
+      map.set(t.studentId, list);
     }
-    setIsProcessing(null);
+    return map;
+  }, [financeApi.data]);
+
+  const reloadAll = () => {
+    allocationsApi.reload();
+    financeApi.reload();
+  };
+
+  const resolve = async (
+    req: SubjectAllocationRequest,
+    body: { resolution: 'APPROVED' } | { resolution: 'REJECTED'; rejectionNote: string }
+  ): Promise<boolean> => {
+    setIsProcessing(req.id);
+    try {
+      await apiFetch('/api/allocations', { method: 'PATCH', json: { id: req.id, ...body } });
+      if (body.resolution === 'APPROVED') {
+        toast.success(`Approved: ${req.subject} added for ${req.studentName}. Monthly tuition has been recalculated.`);
+      } else {
+        toast.success(`Rejected ${req.subject} for ${req.studentName}.`);
+      }
+      reloadAll();
+      return true;
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Could not update the request.');
+      // A 409 means someone else already resolved it — refresh so the queue is accurate.
+      if (err instanceof ApiError && err.status === 409) allocationsApi.reload();
+      return false;
+    } finally {
+      setIsProcessing(null);
+    }
+  };
+
+  const handleApprove = (req: SubjectAllocationRequest) => {
+    void resolve(req, { resolution: 'APPROVED' });
+  };
+
+  const closeReject = () => {
+    setRejectTarget(null);
+    setRejectionNote('');
   };
 
   const handleReject = async () => {
     if (!rejectTarget) return;
-    if (!rejectionNote.trim()) {
-      toast.error('Please enter a rejection reason.');
+    const note = rejectionNote.trim();
+    if (note.length < 3) {
+      toast.error('Please enter a rejection reason (at least 3 characters).');
       return;
     }
-    setIsProcessing(rejectTarget.id);
-    const ok = resolveAllocationRequest(rejectTarget.id, 'REJECTED', rejectionNote.trim());
-    if (ok) {
-      const updated = { ...rejectTarget, status: 'REJECTED' as const, rejectionNote: rejectionNote.trim() };
-      setRequests((prev) => prev.filter((r) => r.id !== rejectTarget.id));
-      setResolved((prev) => [updated, ...prev]);
-      toast.success(`Rejected allocation request.`);
-    } else {
-      toast.error('Failed to reject request.');
-    }
-    setIsProcessing(null);
-    setRejectTarget(null);
-    setRejectionNote('');
+    const ok = await resolve(rejectTarget, { resolution: 'REJECTED', rejectionNote: note });
+    if (ok) closeReject();
   };
+
+  if (allocationsApi.loading && !allocationsApi.data) return <LoadingState label="Loading allocation requests…" />;
+  if (allocationsApi.error && !allocationsApi.data) {
+    return <ErrorState message={allocationsApi.error.message} onRetry={allocationsApi.reload} />;
+  }
 
   return (
     <div className="space-y-6">
@@ -70,9 +110,14 @@ export default function AccountantAllocationsPage() {
       <div>
         <h1 className="text-3xl font-bold text-[#1A2B4A]">Subject Allocation Queue</h1>
         <p className="mt-1 text-[#4A5568]">
-          Review teacher-requested subject allocations. Check payment records before approving.
+          Review teacher-requested subject allocations. Check payment records before approving —
+          approving adds the subject and recalculates the student&apos;s monthly tuition.
         </p>
       </div>
+
+      {financeApi.error && !financeApi.data && (
+        <ErrorState message={`Payment records could not be loaded: ${financeApi.error.message}`} onRetry={financeApi.reload} />
+      )}
 
       {/* Pending requests */}
       <SectionCard
@@ -91,8 +136,8 @@ export default function AccountantAllocationsPage() {
         ) : (
           <div className="divide-y divide-gray-100">
             {requests.map((req) => {
-              const student = getStudentById(req.studentId);
-              const studentTxns = allTransactions.filter((t) => t.studentId === req.studentId);
+              const student = rosterById.get(req.studentId);
+              const studentTxns = txnsByStudent.get(req.studentId) ?? [];
               const totalPaid = studentTxns
                 .filter((t) => t.status === 'verified')
                 .reduce((sum, t) => sum + t.amount, 0);
@@ -126,7 +171,7 @@ export default function AccountantAllocationsPage() {
                         type="button"
                         variant="outline"
                         onClick={() => { setRejectTarget(req); setRejectionNote(''); }}
-                        disabled={isProcessing === req.id}
+                        disabled={isProcessing !== null}
                         className="border-red-300 text-red-600 hover:bg-red-50"
                       >
                         <X size={15} className="mr-1" />
@@ -137,6 +182,7 @@ export default function AccountantAllocationsPage() {
                         variant="primary"
                         onClick={() => handleApprove(req)}
                         isLoading={isProcessing === req.id}
+                        disabled={isProcessing !== null}
                         className="bg-[#10B981] hover:bg-[#059669]"
                       >
                         <CheckCircle2 size={15} className="mr-1" />
@@ -171,15 +217,15 @@ export default function AccountantAllocationsPage() {
                       <p className="text-xs font-semibold uppercase tracking-wide text-[#718096] mb-2">Payment History</p>
                       <div className="space-y-1.5">
                         {studentTxns.map((t) => (
-                          <div key={t.id} className="flex items-center justify-between text-xs">
-                            <span className="text-[#4A5568]">{t.description} · {formatDate(t.date)} · {t.method}</span>
+                          <div key={t.id} className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                            <span className="text-[#4A5568]">
+                              <span className="font-mono">{receiptLabel(t)}</span> · {t.description} · {formatDate(t.date)} · {t.method}
+                            </span>
                             <div className="flex items-center gap-2">
                               <span className="font-semibold text-[#1A2B4A]">{formatINR(t.amount)}</span>
-                              {t.status === 'verified' ? (
-                                <Badge tone="green">Verified</Badge>
-                              ) : (
-                                <Badge tone="amber">Pending</Badge>
-                              )}
+                              <Badge tone={STATUS_BADGE[t.status]?.tone ?? 'gray'}>
+                                {STATUS_BADGE[t.status]?.label ?? t.status}
+                              </Badge>
                             </div>
                           </div>
                         ))}
@@ -202,7 +248,9 @@ export default function AccountantAllocationsPage() {
                 <div className="min-w-0 flex-1">
                   <p className="font-semibold text-[#1A2B4A]">{r.studentName} — {r.subject}</p>
                   <p className="text-xs text-[#718096]">
-                    {r.registrationNumber} · Class {r.classNumber} · {formatDate(r.createdAt)}
+                    {r.registrationNumber} · Class {r.classNumber} · Requested {formatDate(r.createdAt)}
+                    {r.resolvedAt && ` · Resolved ${formatDate(r.resolvedAt)}`}
+                    {r.resolvedBy && ` by ${r.resolvedBy}`}
                     {r.rejectionNote && ` · Reason: ${r.rejectionNote}`}
                   </p>
                 </div>
@@ -223,7 +271,9 @@ export default function AccountantAllocationsPage() {
           <div className="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl border border-gray-200">
             <button
               type="button"
-              onClick={() => { setRejectTarget(null); setRejectionNote(''); }}
+              onClick={closeReject}
+              disabled={isProcessing !== null}
+              aria-label="Close"
               className="absolute right-4 top-4 p-1.5 rounded-full text-gray-400 hover:bg-gray-100 transition"
             >
               <X size={20} />
@@ -240,7 +290,7 @@ export default function AccountantAllocationsPage() {
             </div>
             <div className="space-y-4">
               <Input
-                label="Rejection Reason (required)"
+                label="Rejection Reason (required, min. 3 characters)"
                 placeholder="e.g. Subject quota full, fee not cleared..."
                 value={rejectionNote}
                 onChange={(e) => setRejectionNote(e.target.value)}
@@ -249,7 +299,8 @@ export default function AccountantAllocationsPage() {
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => { setRejectTarget(null); setRejectionNote(''); }}
+                  onClick={closeReject}
+                  disabled={isProcessing !== null}
                   className="flex-1"
                 >
                   Cancel
@@ -259,6 +310,7 @@ export default function AccountantAllocationsPage() {
                   variant="primary"
                   onClick={handleReject}
                   isLoading={isProcessing === rejectTarget.id}
+                  disabled={rejectionNote.trim().length < 3}
                   className="flex-1 bg-red-600 hover:bg-red-700"
                 >
                   Confirm Reject

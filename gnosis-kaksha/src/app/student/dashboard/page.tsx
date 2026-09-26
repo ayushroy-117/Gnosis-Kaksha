@@ -1,3 +1,5 @@
+'use client';
+
 import Link from 'next/link';
 import {
   BookOpen,
@@ -8,23 +10,46 @@ import {
   Pin,
   User,
   Paperclip,
+  Hourglass,
+  XCircle,
+  Eye,
+  Bell,
 } from 'lucide-react';
 import { StatCard } from '@/components/dashboard/StatCard';
 import { SectionCard } from '@/components/dashboard/SectionCard';
 import { Badge } from '@/components/dashboard/Badge';
-import { getStudentData, formatINR, formatDate } from '@/lib/student-data';
-
-export const metadata = { title: 'Student Dashboard - Gnosis Kaksha' };
+import { EmptyState } from '@/components/dashboard/EmptyState';
+import { LoadingState, ErrorState } from '@/components/dashboard/PageState';
+import { formatINR, formatDate } from '@/lib/student-data';
+import { useStudentPortal } from '@/hooks/useStudentPortal';
 
 export default function StudentDashboardPage() {
-  const { profile, subjects, feeStatus, notices } = getStudentData();
+  const { data, error, loading, reload, viewingAs, withAs } = useStudentPortal();
+
+  if (loading && !data) return <LoadingState label="Loading your dashboard…" />;
+  if (error) return <ErrorState message={error.message} onRetry={reload} />;
+  if (!data) return null;
+
+  const { profile, subjects, feeStatus, notices } = data;
   const firstName = profile.fullName.split(' ')[0];
   const recentNotices = [...notices]
-    .sort((a, b) => Number(b.pinned) - Number(a.pinned))
+    .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.date.localeCompare(a.date))
     .slice(0, 3);
+  const isActive = profile.enrollmentStatus === 'active';
 
   return (
     <div className="space-y-6">
+      {viewingAs && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-sm text-[#1A2B4A]">
+          <span className="inline-flex items-center gap-2">
+            <Eye size={15} className="text-[#1295D8]" />
+            Viewing <span className="font-semibold">{profile.fullName}</span>&apos;s portal as admin
+          </span>
+          <Link href="/admin/students" className="font-medium text-[#1295D8] hover:underline">
+            Back to students
+          </Link>
+        </div>
+      )}
 
       {/* Welcome */}
       <div>
@@ -36,6 +61,45 @@ export default function StudentDashboardPage() {
         </p>
       </div>
 
+      {profile.enrollmentStatus === 'pending' && (
+        <div className="flex flex-col gap-4 rounded-[12px] border border-amber-200 bg-amber-50 p-6 sm:flex-row sm:items-start">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-600">
+            <Hourglass size={22} />
+          </div>
+          <div className="flex-1">
+            <h2 className="text-lg font-semibold text-[#1A2B4A]">Admission under review</h2>
+            <p className="mt-1 text-sm text-[#4A5568]">
+              Your admission payment is awaiting verification by the office. Your courses and study
+              material will unlock once it is approved. If your payment was rejected, you can see the
+              reason and resubmit it from the Fees page.
+            </p>
+            <Link
+              href={withAs('/student/fees')}
+              className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-[#1295D8] hover:underline"
+            >
+              View payment status <ArrowRight size={15} />
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {profile.enrollmentStatus === 'rejected' && (
+        <div className="flex flex-col gap-4 rounded-[12px] border border-red-200 bg-red-50 p-6 sm:flex-row sm:items-start">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-red-100 text-red-600">
+            <XCircle size={22} />
+          </div>
+          <div className="flex-1">
+            <h2 className="text-lg font-semibold text-[#1A2B4A]">Application not approved</h2>
+            <p className="mt-1 text-sm text-[#4A5568]">
+              Your admission application was not approved. Please contact the institute office for
+              details.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {isActive && (
+      <>
       {/* Stats */}
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
@@ -76,7 +140,7 @@ export default function StudentDashboardPage() {
           className="lg:col-span-2"
           action={
             <Link
-              href="/student/fees"
+              href={withAs('/student/fees')}
               className="inline-flex items-center gap-1 text-sm font-medium text-[#1295D8] hover:underline"
             >
               Details <ArrowRight size={15} />
@@ -131,7 +195,7 @@ export default function StudentDashboardPage() {
           title="My Profile"
           action={
             <Link
-              href="/student/profile"
+              href={withAs('/student/profile')}
               className="inline-flex items-center gap-1 text-sm font-medium text-[#1295D8] hover:underline"
             >
               View <ArrowRight size={15} />
@@ -177,7 +241,7 @@ export default function StudentDashboardPage() {
           className="lg:col-span-2"
           action={
             <Link
-              href="/student/courses"
+              href={withAs('/student/courses')}
               className="inline-flex items-center gap-1 text-sm font-medium text-[#1295D8] hover:underline"
             >
               All courses <ArrowRight size={15} />
@@ -185,6 +249,13 @@ export default function StudentDashboardPage() {
           }
           bodyClassName="p-0"
         >
+          {subjects.length === 0 ? (
+            <EmptyState
+              icon={BookOpen}
+              title="No subjects enrolled yet"
+              message="Your enrolled subjects will appear here."
+            />
+          ) : (
           <ul className="divide-y divide-gray-100">
             {subjects.map((s) => (
               <li
@@ -206,6 +277,7 @@ export default function StudentDashboardPage() {
               </li>
             ))}
           </ul>
+          )}
         </SectionCard>
 
         {/* Notices */}
@@ -213,13 +285,16 @@ export default function StudentDashboardPage() {
           title="Recent Notices"
           action={
             <Link
-              href="/student/notices"
+              href={withAs('/student/notices')}
               className="inline-flex items-center gap-1 text-sm font-medium text-[#1295D8] hover:underline"
             >
               All <ArrowRight size={15} />
             </Link>
           }
         >
+          {recentNotices.length === 0 ? (
+            <EmptyState icon={Bell} title="No notices yet" message="New announcements will appear here." />
+          ) : (
           <ul className="space-y-4">
             {recentNotices.map((n) => (
               <li key={n.id} className="border-l-2 border-[#1295D8] pl-3">
@@ -237,8 +312,11 @@ export default function StudentDashboardPage() {
               </li>
             ))}
           </ul>
+          )}
         </SectionCard>
       </div>
+      </>
+      )}
     </div>
   );
 }

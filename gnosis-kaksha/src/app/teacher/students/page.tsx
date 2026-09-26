@@ -7,7 +7,6 @@ import {
   BookOpen,
   Phone,
   UserCheck,
-  QrCode,
   Barcode as BarcodeIcon,
   LayoutGrid,
   List,
@@ -15,17 +14,16 @@ import {
   Copy,
   Check,
   ShieldCheck,
-  GraduationCap,
   Sparkles,
-  ExternalLink,
 } from 'lucide-react';
 import { SectionCard } from '@/components/dashboard/SectionCard';
 import { EmptyState } from '@/components/dashboard/EmptyState';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { Barcode } from '@/components/ui/Barcode';
-import { getAllStudents, type RosterStudent } from '@/lib/institute-store';
-import { classLabel } from '@/lib/institute-data';
+import { LoadingState, ErrorState } from '@/components/dashboard/PageState';
+import { useApi } from '@/hooks/useApi';
+import { classLabel, type TeacherData, type TeacherRosterStudent } from '@/lib/institute-data';
 import { QRCodeSVG } from 'qrcode.react';
 
 export default function TeacherStudentsPage() {
@@ -33,13 +31,14 @@ export default function TeacherStudentsPage() {
   const [selectedClass, setSelectedClass] = useState<string>('all');
   const [selectedSubject, setSelectedSubject] = useState<string>('all');
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('table');
-  const [activeBarcodeStudent, setActiveBarcodeStudent] = useState<RosterStudent | null>(null);
+  const [activeBarcodeStudent, setActiveBarcodeStudent] = useState<TeacherRosterStudent | null>(null);
   const [copiedRegNo, setCopiedRegNo] = useState(false);
 
   // Active enrolled students
+  const { data, error, loading, reload } = useApi<TeacherData>('/api/data/teacher');
   const students = useMemo(() => {
-    return getAllStudents().filter((s) => s.status === 'active');
-  }, []);
+    return (data?.roster ?? []).filter((s) => s.status === 'active');
+  }, [data]);
 
   // Unique classes and subjects for filter dropdowns
   const availableClasses = useMemo(() => {
@@ -88,6 +87,9 @@ export default function TeacherStudentsPage() {
   const handlePrintModalBarcode = () => {
     window.print();
   };
+
+  if (loading && !data) return <LoadingState label="Loading students…" />;
+  if (error || !data) return <ErrorState message={error?.message ?? 'Could not load students.'} onRetry={reload} />;
 
   return (
     <div className="space-y-6">

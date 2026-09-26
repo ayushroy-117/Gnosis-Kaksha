@@ -1,21 +1,36 @@
+'use client';
+
 import Link from 'next/link';
-import { Users, UserCheck, UserPlus, Wallet, Megaphone, ArrowRight } from 'lucide-react';
+import { Users, UserCheck, UserPlus, Wallet, Megaphone, ArrowRight, Clock, KeyRound } from 'lucide-react';
 import { StatCard } from '@/components/dashboard/StatCard';
 import { SectionCard } from '@/components/dashboard/SectionCard';
 import { Badge } from '@/components/dashboard/Badge';
 import { EmptyState } from '@/components/dashboard/EmptyState';
+import { LoadingState, ErrorState } from '@/components/dashboard/PageState';
+import { useApi } from '@/hooks/useApi';
 import {
-  getAdminData,
   classLabel,
   formatINR,
   formatDate,
+  type AdminData,
 } from '@/lib/institute-data';
 
-export const metadata = { title: 'Admin Overview - Gnosis Kaksha' };
-
 export default function AdminDashboardPage() {
-  const { stats, classDistribution, pendingAdmissions, notices, currentPeriod } =
-    getAdminData();
+  const { data, error, loading, reload } = useApi<AdminData>('/api/data/admin');
+
+  if (error) return <ErrorState message={error.message} onRetry={reload} />;
+  if (loading || !data) return <LoadingState label="Loading institute overview…" />;
+
+  const {
+    stats,
+    classDistribution,
+    pendingAdmissions,
+    notices,
+    currentPeriod,
+    pendingPaymentCount,
+    accountCounts,
+  } = data;
+  const totalAccounts = Object.values(accountCounts).reduce((sum, n) => sum + n, 0);
   const maxClassCount = Math.max(1, ...classDistribution.map((c) => c.count));
   const recentNotices = [...notices]
     .sort((a, b) => b.date.localeCompare(a.date))
@@ -61,6 +76,34 @@ export default function AdminDashboardPage() {
         />
       </div>
 
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <Link
+          href="/accountant/collections"
+          className="flex items-center gap-4 rounded-[12px] border border-gray-200 bg-white px-5 py-4 shadow-sm transition hover:border-[#1295D8] hover:shadow-md"
+        >
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-600">
+            <Clock size={18} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium text-[#718096]">Pending payment verifications</p>
+            <p className="text-xl font-bold text-[#1A2B4A]">{pendingPaymentCount}</p>
+          </div>
+          <ArrowRight size={16} className="shrink-0 text-[#1295D8]" />
+        </Link>
+        <div className="flex items-center gap-4 rounded-[12px] border border-gray-200 bg-white px-5 py-4 shadow-sm">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#CDE6F7] text-[#1295D8]">
+            <KeyRound size={18} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium text-[#718096]">Portal accounts · {totalAccounts}</p>
+            <p className="text-sm text-[#4A5568]">
+              {accountCounts.admin} admin · {accountCounts.accountant} accountant ·{' '}
+              {accountCounts.teacher} teacher · {accountCounts.student} student
+            </p>
+          </div>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
         {/* Class distribution */}
         <SectionCard
@@ -68,6 +111,13 @@ export default function AdminDashboardPage() {
           description="Current enrollment distribution"
           className="lg:col-span-2"
         >
+          {classDistribution.length === 0 ? (
+            <EmptyState
+              icon={Users}
+              title="No enrolled students"
+              message="Class distribution appears once admissions are approved."
+            />
+          ) : (
           <ul className="space-y-3">
             {classDistribution.map((c) => (
               <li key={c.classNumber} className="flex items-center gap-3">
@@ -86,6 +136,7 @@ export default function AdminDashboardPage() {
               </li>
             ))}
           </ul>
+          )}
         </SectionCard>
 
         {/* Pending admissions */}
@@ -148,6 +199,15 @@ export default function AdminDashboardPage() {
           </Link>
         }
       >
+        {recentNotices.length === 0 ? (
+          <div className="p-6">
+            <EmptyState
+              icon={Megaphone}
+              title="No notices yet"
+              message="Announcements you publish will appear here."
+            />
+          </div>
+        ) : (
         <ul className="divide-y divide-gray-100">
           {recentNotices.map((n) => (
             <li key={n.id} className="flex items-start gap-3 px-6 py-4">
@@ -167,6 +227,7 @@ export default function AdminDashboardPage() {
             </li>
           ))}
         </ul>
+        )}
       </SectionCard>
     </div>
   );

@@ -1,9 +1,10 @@
+'use client';
+
 import Link from 'next/link';
 import {
   Wallet,
   Clock,
   Receipt,
-  AlertTriangle,
   ArrowRight,
   CheckCircle2,
   Hourglass,
@@ -11,17 +12,24 @@ import {
 import { StatCard } from '@/components/dashboard/StatCard';
 import { SectionCard } from '@/components/dashboard/SectionCard';
 import { EmptyState } from '@/components/dashboard/EmptyState';
+import { LoadingState, ErrorState } from '@/components/dashboard/PageState';
+import { useApi } from '@/hooks/useApi';
 import {
-  getAccountantData,
   classLabel,
   formatINR,
   formatDate,
+  receiptLabel,
+  type AccountantData,
 } from '@/lib/institute-data';
 
-export const metadata = { title: 'Finance Overview - Gnosis Kaksha' };
-
 export default function AccountantDashboardPage() {
-  const { stats, transactions, defaulters, currentPeriod } = getAccountantData();
+  const { data, error, loading, reload } = useApi<AccountantData>('/api/data/accountant');
+
+  if (loading && !data) return <LoadingState label="Loading finance overview…" />;
+  if (error && !data) return <ErrorState message={error.message} onRetry={reload} />;
+  if (!data) return null;
+
+  const { stats, transactions, defaulters, currentPeriod } = data;
   const recentTransactions = transactions.filter((t) => t.status === 'verified').slice(0, 5);
 
   return (
@@ -47,14 +55,20 @@ export default function AccountantDashboardPage() {
           valueColor="text-[#F59E0B]"
           iconClasses="bg-amber-100 text-amber-600"
         />
-        <StatCard
-          icon={Hourglass}
-          label="Awaiting Verification"
-          value={stats.pendingVerificationCount}
-          valueColor={stats.pendingVerificationCount > 0 ? 'text-amber-600' : 'text-gray-400'}
-          iconClasses={stats.pendingVerificationCount > 0 ? 'bg-amber-100 text-amber-600' : 'bg-gray-100 text-gray-400'}
-          sublabel="UPI payments to verify"
-        />
+        <Link
+          href="/accountant/collections"
+          title="Review pending verifications"
+          className="block rounded-[12px] transition hover:opacity-90 focus-visible:outline-2 focus-visible:outline-[#1295D8]"
+        >
+          <StatCard
+            icon={Hourglass}
+            label="Awaiting Verification"
+            value={stats.pendingVerificationCount}
+            valueColor={stats.pendingVerificationCount > 0 ? 'text-amber-600' : 'text-gray-400'}
+            iconClasses={stats.pendingVerificationCount > 0 ? 'bg-amber-100 text-amber-600' : 'bg-gray-100 text-gray-400'}
+            sublabel="Review in Collections →"
+          />
+        </Link>
         <StatCard
           icon={Receipt}
           label="Receipts Issued"
@@ -80,6 +94,15 @@ export default function AccountantDashboardPage() {
             </Link>
           }
         >
+          {recentTransactions.length === 0 ? (
+            <div className="p-6">
+              <EmptyState
+                icon={Receipt}
+                title="No receipts yet"
+                message="Verified payments will appear here."
+              />
+            </div>
+          ) : (
           <ul className="divide-y divide-gray-100">
             {recentTransactions.map((t) => (
               <li key={t.id} className="flex items-center gap-4 px-6 py-4">
@@ -91,7 +114,7 @@ export default function AccountantDashboardPage() {
                     {t.studentName}
                   </p>
                   <p className="truncate text-xs text-[#718096]">
-                    {t.description} · {formatDate(t.date)} · {t.method}
+                    <span className="font-mono">{receiptLabel(t)}</span> · {t.description} · {formatDate(t.date)} · {t.method}
                   </p>
                 </div>
                 <span className="shrink-0 text-sm font-semibold text-[#1A2B4A]">
@@ -100,6 +123,7 @@ export default function AccountantDashboardPage() {
               </li>
             ))}
           </ul>
+          )}
         </SectionCard>
 
         {/* Defaulters */}

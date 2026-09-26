@@ -4,9 +4,25 @@ import { useState, useEffect } from 'react';
 import { Modal } from '@/components/ui/Modal';
 import { X } from 'lucide-react';
 
+interface GalleryRow {
+  id: string;
+  image_url: string;
+  title: string;
+  caption: string | null;
+  event_tag: string | null;
+}
+
+interface GalleryItem {
+  id: string;
+  image: string;
+  caption: string;
+  subtitle: string | null;
+  event_tag: string | null;
+}
+
 export default function Gallery() {
-  const [gallery, setGallery] = useState<any[]>([]);
-  const [selectedImage, setSelectedImage] = useState<any>(null);
+  const [gallery, setGallery] = useState<GalleryItem[]>([]);
+  const [selectedImage, setSelectedImage] = useState<GalleryItem | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [activeTag, setActiveTag] = useState<string>('All');
@@ -18,7 +34,7 @@ export default function Gallery() {
         return res.json();
       })
       .then((data) => {
-        const mapped = (data.images ?? []).map((item: any) => ({
+        const mapped = (data.images ?? []).map((item: GalleryRow) => ({
           id: item.id,
           image: item.image_url,
           caption: item.title,

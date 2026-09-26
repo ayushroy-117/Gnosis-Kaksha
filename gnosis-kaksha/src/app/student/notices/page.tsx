@@ -1,11 +1,19 @@
 'use client';
 
-import { Pin, Bell, Paperclip, ExternalLink, Download } from 'lucide-react';
+import { Pin, Bell, Paperclip, ExternalLink } from 'lucide-react';
 import { EmptyState } from '@/components/dashboard/EmptyState';
-import { getStudentData, formatDate } from '@/lib/student-data';
+import { LoadingState, ErrorState } from '@/components/dashboard/PageState';
+import { formatDate } from '@/lib/student-data';
+import { useStudentPortal } from '@/hooks/useStudentPortal';
 
 export default function StudentNoticesPage() {
-  const { notices } = getStudentData();
+  const { data, error, loading, reload } = useStudentPortal();
+
+  if (loading && !data) return <LoadingState label="Loading notices…" />;
+  if (error) return <ErrorState message={error.message} onRetry={reload} />;
+  if (!data) return null;
+
+  const { notices } = data;
   const sorted = [...notices].sort((a, b) => {
     if (a.pinned !== b.pinned) return Number(b.pinned) - Number(a.pinned);
     return b.date.localeCompare(a.date);

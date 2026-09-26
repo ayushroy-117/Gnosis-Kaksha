@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import {
   CalendarCheck,
   Users,
@@ -9,63 +9,53 @@ import {
   XCircle,
   Clock,
   Save,
-  AlertTriangle,
-  WifiOff,
-  Wifi,
-  Sparkles,
   Printer,
-  RotateCcw,
-  Check,
-  UserCheck,
-  FileSpreadsheet,
-  BookOpen,
 } from 'lucide-react';
 import { SectionCard } from '@/components/dashboard/SectionCard';
 import { EmptyState } from '@/components/dashboard/EmptyState';
 import { Button } from '@/components/ui/Button';
-import { getAllStudents, type RosterStudent } from '@/lib/institute-store';
-import {
-  getAttendanceRecord,
-  saveAttendanceRecord,
-  type AttendanceRecord,
-  type AttendanceStatus,
-  type AttendanceEntry,
-} from '@/lib/attendance-store';
+import { LoadingState, ErrorState } from '@/components/dashboard/PageState';
+import type { TeacherData } from '@/lib/institute-data';
+import type { AttendanceRecord, AttendanceStatus, AttendanceEntry } from '@/lib/attendance-store';
 import { useAuth } from '@/hooks/useAuth';
+import { useApi, apiFetch } from '@/hooks/useApi';
+import toast from 'react-hot-toast';
+
+type EntryMap = Record<string, { status: AttendanceStatus; remark: string }>;
+
+function formatSavedAt(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true });
+}
 
 export default function TeacherAttendancePage() {
   const { user } = useAuth();
 
-  // Date state (defaults to today in YYYY-MM-DD)
-  const todayStr = useMemo(() => {
-    const d = new Date();
-    return d.toISOString().split('T')[0];
-  }, []);
+  // Date state (defaults to today, YYYY-MM-DD in UTC — matches the server's future-date check)
+  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
 
   const [selectedDate, setSelectedDate] = useState<string>(todayStr);
-  const [selectedClass, setSelectedClass] = useState<number>(10);
-  const [selectedSubject, setSelectedSubject] = useState<string>('Science');
+  const [chosenClass, setChosenClass] = useState<number | null>(null);
+  const [chosenSubject, setChosenSubject] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState<string>('');
+  const [isSaving, setIsSaving] = useState(false);
 
-  // Machine status state: 'offline' (switched off/unavailable) or 'online'
-  const [machineStatus, setMachineStatus] = useState<'offline' | 'online'>('offline');
-  const [isManualOverride, setIsManualOverride] = useState<boolean>(true);
+  const { data, error, loading, reload } = useApi<TeacherData>('/api/data/teacher');
 
-  // Student attendance entry map: { [studentId]: { status: AttendanceStatus, remark: string } }
-  const [entries, setEntries] = useState<Record<string, { status: AttendanceStatus; remark: string }>>({});
-  const [isSaved, setIsSaved] = useState<boolean>(false);
-  const [lastSavedTime, setLastSavedTime] = useState<string | null>(null);
-
-  // Fetch active students
+  // Active students
   const allActiveStudents = useMemo(() => {
-    return getAllStudents().filter((s) => s.status === 'active');
-  }, []);
+    return (data?.roster ?? []).filter((s) => s.status === 'active');
+  }, [data]);
 
   // Available classes in institute
   const availableClasses = useMemo(() => {
     const set = new Set(allActiveStudents.map((s) => s.classNumber));
     return Array.from(set).sort((a, b) => a - b);
   }, [allActiveStudents]);
+
+  const selectedClass =
+    chosenClass !== null && availableClasses.includes(chosenClass) ? chosenClass : availableClasses[0] ?? null;
 
   // Subjects available for the selected class
   const availableSubjectsForClass = useMemo(() => {
@@ -76,12 +66,10 @@ export default function TeacherAttendancePage() {
     return Array.from(set).sort();
   }, [allActiveStudents, selectedClass]);
 
-  // Auto-select first available subject if current selection is not in list
-  useEffect(() => {
-    if (availableSubjectsForClass.length > 0 && !availableSubjectsForClass.includes(selectedSubject)) {
-      setSelectedSubject(availableSubjectsForClass[0]);
-    }
-  }, [availableSubjectsForClass, selectedSubject]);
+  const selectedSubject =
+    chosenSubject && availableSubjectsForClass.includes(chosenSubject)
+      ? chosenSubject
+      : availableSubjectsForClass[0] ?? '';
 
   // Students enrolled in the selected class and subject
   const enrolledStudents = useMemo(() => {
@@ -101,27 +89,55 @@ export default function TeacherAttendancePage() {
     );
   }, [enrolledStudents, searchTerm]);
 
-  // Load existing attendance record whenever Date, Class, or Subject changes
-  useEffect(() => {
-    setIsSaved(false);
-    const existing = getAttendanceRecord(selectedDate, selectedClass, selectedSubject);
-    if (existing && existing.entries.length > 0) {
-      const map: Record<string, { status: AttendanceStatus; remark: string }> = {};
-      existing.entries.forEach((e) => {
-        map[e.studentId] = { status: e.status, remark: e.remark || '' };
-      });
-      setEntries(map);
-      setLastSavedTime(existing.savedAt);
-    } else {
-      // Default initialization: all enrolled students unmarked or default present
-      const initialMap: Record<string, { status: AttendanceStatus; remark: string }> = {};
-      enrolledStudents.forEach((s) => {
-        initialMap[s.id] = { status: 'present', remark: '' };
-      });
-      setEntries(initialMap);
-      setLastSavedTime(null);
-    }
-  }, [selectedDate, selectedClass, selectedSubject, enrolledStudents]);
+  // Existing record for the selected Date / Class / Subject (re-fetched when the selection changes)
+  const recordUrl =
+    selectedClass !== null && selectedSubject
+      ? `/api/attendance?${new URLSearchParams({
+          date: selectedDate,
+          classNumber: String(selectedClass),
+          subject: selectedSubject,
+        }).toString()}`
+      : null;
+  const {
+    data: recordData,
+    error: recordError,
+    loading: recordLoading,
+    reload: reloadRecord,
+    setData: setRecordData,
+  } = useApi<{ records: AttendanceRecord[] }>(recordUrl);
+  // useApi keeps the previous response while a new selection loads, so match it to the selection.
+  const existingRecord =
+    recordData?.records.find(
+      (r) =>
+        r.date === selectedDate &&
+        r.classNumber === selectedClass &&
+        r.subject.toLowerCase() === selectedSubject.toLowerCase()
+    ) ?? null;
+
+  // Entries from the saved record, or everyone present by default
+  const baseEntries = useMemo<EntryMap>(() => {
+    const map: EntryMap = {};
+    enrolledStudents.forEach((s) => {
+      map[s.id] = { status: 'present', remark: '' };
+    });
+    existingRecord?.entries.forEach((e) => {
+      map[e.studentId] = { status: e.status, remark: e.remark || '' };
+    });
+    return map;
+  }, [enrolledStudents, existingRecord]);
+
+  // Unsaved edits are tied to the current selection + saved version; changing either discards them.
+  const selectionKey = `${selectedDate}|${selectedClass}|${selectedSubject}|${existingRecord?.savedAt ?? 'new'}`;
+  const [draft, setDraft] = useState<{ key: string; map: EntryMap } | null>(null);
+  const [savedKey, setSavedKey] = useState<string | null>(null);
+  const isDirty = draft?.key === selectionKey;
+  const entries = isDirty ? draft.map : baseEntries;
+  const isSaved = savedKey === selectionKey && !isDirty;
+  const lastSavedTime = existingRecord ? formatSavedAt(existingRecord.savedAt) : null;
+
+  const updateEntries = (fn: (prev: EntryMap) => EntryMap) => {
+    setDraft({ key: selectionKey, map: fn(entries) });
+  };
 
   // Attendance metrics
   const stats = useMemo(() => {
@@ -141,74 +157,82 @@ export default function TeacherAttendancePage() {
 
   // Handle individual status change
   const handleStatusChange = (studentId: string, status: AttendanceStatus) => {
-    setEntries((prev) => ({
+    updateEntries((prev) => ({
       ...prev,
       [studentId]: {
         status,
         remark: prev[studentId]?.remark || '',
       },
     }));
-    setIsSaved(false);
   };
 
   // Handle individual remark change
   const handleRemarkChange = (studentId: string, remark: string) => {
-    setEntries((prev) => ({
+    updateEntries((prev) => ({
       ...prev,
       [studentId]: {
         status: prev[studentId]?.status || 'present',
         remark,
       },
     }));
-    setIsSaved(false);
   };
 
   // Bulk actions
   const markAll = (status: AttendanceStatus) => {
-    const updated: Record<string, { status: AttendanceStatus; remark: string }> = {};
-    enrolledStudents.forEach((s) => {
-      updated[s.id] = {
-        status,
-        remark: entries[s.id]?.remark || '',
-      };
+    updateEntries((prev) => {
+      const updated: EntryMap = {};
+      enrolledStudents.forEach((s) => {
+        updated[s.id] = { status, remark: prev[s.id]?.remark || '' };
+      });
+      return updated;
     });
-    setEntries(updated);
-    setIsSaved(false);
   };
 
   // Save attendance
-  const handleSave = () => {
+  const handleSave = async () => {
+    if (selectedClass === null || !selectedSubject || enrolledStudents.length === 0) {
+      toast.error('Select a class and subject with enrolled students first.');
+      return;
+    }
     const entryList: AttendanceEntry[] = enrolledStudents.map((s) => ({
       studentId: s.id,
       studentName: s.fullName,
       registrationNumber: s.registrationNumber,
       status: entries[s.id]?.status || 'present',
-      remark: entries[s.id]?.remark || undefined,
+      remark: entries[s.id]?.remark.trim() || undefined,
     }));
 
-    const record: AttendanceRecord = {
-      id: `att-${selectedDate}-cls${selectedClass}-${selectedSubject.toLowerCase().replace(/\s+/g, '-')}`,
-      date: selectedDate,
-      classNumber: selectedClass,
-      subject: selectedSubject,
-      teacherName: user?.fullName || 'Faculty Teacher',
-      mode: machineStatus === 'offline' || isManualOverride ? 'manual' : 'biometric',
-      entries: entryList,
-      totalStudents: stats.total,
-      presentCount: stats.present,
-      absentCount: stats.absent,
-      lateCount: stats.late,
-      savedAt: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }),
-    };
-
-    saveAttendanceRecord(record);
-    setIsSaved(true);
-    setLastSavedTime(record.savedAt);
+    setIsSaving(true);
+    try {
+      const { record } = await apiFetch<{ record: AttendanceRecord }>('/api/attendance', {
+        method: 'POST',
+        json: {
+          date: selectedDate,
+          classNumber: selectedClass,
+          subject: selectedSubject,
+          mode: 'manual',
+          entries: entryList,
+        },
+      });
+      setRecordData({ records: [record] });
+      setDraft(null);
+      setSavedKey(`${selectedDate}|${selectedClass}|${selectedSubject}|${record.savedAt}`);
+      toast.success(`Attendance saved for Class ${selectedClass} — ${selectedSubject}.`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not save attendance.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handlePrint = () => {
     window.print();
   };
+
+  if (loading && !data) return <LoadingState label="Loading roster…" />;
+  if (error || !data) return <ErrorState message={error?.message ?? 'Could not load roster.'} onRetry={reload} />;
+
+  const canSave = enrolledStudents.length > 0 && !recordLoading && !recordError;
 
   return (
     <div className="space-y-6">
@@ -223,7 +247,7 @@ export default function TeacherAttendancePage() {
             </span>
           </div>
           <p className="mt-1 text-sm text-[#4A5568]">
-            Mark lecture attendance for enrolled students. When biometric machine is unavailable or switched off, use manual mode.
+            Mark lecture attendance for enrolled students. Records are saved to the institute database and can be re-opened and corrected for any past date.
           </p>
         </div>
 
@@ -240,78 +264,12 @@ export default function TeacherAttendancePage() {
           <Button
             type="button"
             onClick={handleSave}
+            isLoading={isSaving}
+            disabled={!canSave}
             className="gap-2 bg-gradient-to-r from-[#1295D8] to-[#2E5EAA] text-white shadow-sm hover:shadow"
           >
             <Save size={16} /> Save Attendance
           </Button>
-        </div>
-      </div>
-
-      {/* ══════════════════════════════════════════════════════════
-          MACHINE STATUS / OFFLINE FALLBACK BANNER
-          ══════════════════════════════════════════════════════════ */}
-      <div
-        className={`rounded-2xl border p-4 transition-all duration-200 print:hidden ${
-          machineStatus === 'offline' || isManualOverride
-            ? 'border-amber-300 bg-gradient-to-r from-amber-50 via-orange-50 to-amber-50 shadow-xs'
-            : 'border-emerald-200 bg-emerald-50/70'
-        }`}
-      >
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-start gap-3">
-            <div
-              className={`rounded-xl p-2.5 shrink-0 ${
-                machineStatus === 'offline' || isManualOverride
-                  ? 'bg-amber-500 text-white shadow-xs'
-                  : 'bg-emerald-600 text-white shadow-xs'
-              }`}
-            >
-              {machineStatus === 'offline' || isManualOverride ? <WifiOff size={20} /> : <Wifi size={20} />}
-            </div>
-
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-sm font-bold text-[#1A2B4A]">
-                  {machineStatus === 'offline' || isManualOverride
-                    ? 'Biometric Machine Unavailable / Switched Off — Manual Mode Active'
-                    : 'Biometric Attendance Machine Online & Connected'}
-                </h3>
-                <span
-                  className={`rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-wider ${
-                    machineStatus === 'offline' || isManualOverride
-                      ? 'bg-amber-200/80 text-amber-900 border border-amber-300'
-                      : 'bg-emerald-200 text-emerald-900 border border-emerald-300'
-                  }`}
-                >
-                  {machineStatus === 'offline' ? 'Machine Switched Off' : 'Machine Online'}
-                </span>
-              </div>
-
-              <p className="mt-1 text-xs text-[#4A5568] leading-relaxed">
-                {machineStatus === 'offline' || isManualOverride
-                  ? 'The automated biometric scanner is currently switched off or undergoing maintenance. Faculty can mark student attendance manually below.'
-                  : 'Attendance can be recorded automatically via RFID / Biometric scanner, or overridden manually by the teacher.'}
-              </p>
-            </div>
-          </div>
-
-          {/* Machine Status Switcher & Manual Toggle */}
-          <div className="flex items-center gap-2 self-start sm:self-center shrink-0">
-            <button
-              type="button"
-              onClick={() => {
-                setMachineStatus((prev) => (prev === 'offline' ? 'online' : 'offline'));
-                setIsManualOverride(true);
-              }}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 shadow-2xs transition-colors"
-            >
-              Toggle Machine: {machineStatus === 'offline' ? 'Turn Online' : 'Turn Offline'}
-            </button>
-
-            <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 text-white px-3 py-1.5 text-xs font-bold shadow-2xs">
-              <Check size={14} /> Manual Enabled
-            </span>
-          </div>
         </div>
       </div>
 
@@ -325,7 +283,8 @@ export default function TeacherAttendancePage() {
           <input
             type="date"
             value={selectedDate}
-            onChange={(e) => setSelectedDate(e.target.value)}
+            max={todayStr}
+            onChange={(e) => e.target.value && setSelectedDate(e.target.value)}
             className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-[#0F172A] bg-white font-medium focus:outline-hidden focus:ring-2 focus:ring-[#1295D8]"
           />
         </div>
@@ -336,8 +295,8 @@ export default function TeacherAttendancePage() {
             Select Class
           </label>
           <select
-            value={selectedClass}
-            onChange={(e) => setSelectedClass(Number(e.target.value))}
+            value={selectedClass ?? ''}
+            onChange={(e) => setChosenClass(Number(e.target.value))}
             className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-[#0F172A] bg-white font-medium focus:outline-hidden focus:ring-2 focus:ring-[#1295D8]"
           >
             {availableClasses.map((cls) => (
@@ -355,7 +314,7 @@ export default function TeacherAttendancePage() {
           </label>
           <select
             value={selectedSubject}
-            onChange={(e) => setSelectedSubject(e.target.value)}
+            onChange={(e) => setChosenSubject(e.target.value)}
             className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-[#0F172A] bg-white font-medium focus:outline-hidden focus:ring-2 focus:ring-[#1295D8]"
           >
             {availableSubjectsForClass.map((sub) => (
@@ -442,14 +401,35 @@ export default function TeacherAttendancePage() {
               Attendance for <strong>Class {selectedClass} — {selectedSubject}</strong> on <strong>{selectedDate}</strong> successfully saved to records.
             </span>
           </div>
-          {lastSavedTime && <span className="text-emerald-700 text-[11px]">Saved at {lastSavedTime}</span>}
+          {lastSavedTime && <span className="text-emerald-700 text-[11px]">Saved {lastSavedTime}</span>}
+        </div>
+      )}
+
+      {/* ── Existing record notice ── */}
+      {!isSaved && existingRecord && !recordLoading && (
+        <div className="rounded-xl border border-blue-200 bg-blue-50 p-3.5 flex flex-wrap items-center justify-between gap-2 text-[#1E3A8A] text-xs font-semibold print:hidden">
+          <span>
+            Showing the saved record for this lecture{existingRecord.teacherName ? ` (by ${existingRecord.teacherName})` : ''}
+            {isDirty ? ' — you have unsaved changes.' : '. Saving again will overwrite it.'}
+          </span>
+          {lastSavedTime && <span className="text-[11px]">Last saved {lastSavedTime}</span>}
         </div>
       )}
 
       {/* ══════════════════════════════════════════════════════════
           STUDENT ATTENDANCE ROSTER TABLE
           ══════════════════════════════════════════════════════════ */}
-      {enrolledStudents.length === 0 ? (
+      {availableClasses.length === 0 ? (
+        <EmptyState
+          icon={Users}
+          title="No active students"
+          message="Attendance can be marked once students are enrolled."
+        />
+      ) : recordError ? (
+        <ErrorState message={recordError.message} onRetry={reloadRecord} />
+      ) : recordLoading ? (
+        <LoadingState label="Loading attendance record…" />
+      ) : enrolledStudents.length === 0 ? (
         <EmptyState
           icon={Users}
           title={`No students enrolled in ${selectedSubject}`}
@@ -498,7 +478,7 @@ export default function TeacherAttendancePage() {
               </div>
               <div className="text-right text-xs">
                 <p className="font-bold">Faculty: {user?.fullName || 'Subject Teacher'}</p>
-                <p className="text-gray-500">Mode: Manual Fallback Record</p>
+                <p className="text-gray-500">Mode: Manual</p>
               </div>
             </div>
           </div>
@@ -635,6 +615,8 @@ export default function TeacherAttendancePage() {
             <Button
               type="button"
               onClick={handleSave}
+              isLoading={isSaving}
+              disabled={!canSave}
               className="gap-2 bg-gradient-to-r from-[#1295D8] to-[#2E5EAA] text-white shadow-sm hover:shadow"
             >
               <Save size={16} /> Save Attendance Record

@@ -1,66 +1,58 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   BookOpen,
-  FileText,
-  Upload,
   Plus,
   Trash2,
   Download,
-  Eye,
   Search,
-  Filter,
   X,
-  CheckCircle2,
+  Upload,
 } from 'lucide-react';
 import { SectionCard } from '@/components/dashboard/SectionCard';
-import { Badge } from '@/components/dashboard/Badge';
+import { EmptyState } from '@/components/dashboard/EmptyState';
+import { LoadingState, ErrorState } from '@/components/dashboard/PageState';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { Select } from '@/components/ui/Select';
+import { useApi, apiFetch } from '@/hooks/useApi';
+import { SUBJECT_FEES } from '@/lib/fees';
 import {
-  getAllStudyMaterials,
-  StudyMaterial,
-  MaterialCategory,
+  MATERIAL_CATEGORIES,
+  type StudyMaterial,
+  type MaterialCategory,
 } from '@/lib/study-materials';
 import toast from 'react-hot-toast';
 
-const CLASSES = [9, 10, 11, 12, 5, 6, 7, 8];
-const CATEGORIES: MaterialCategory[] = [
-  'Notes',
-  'PYQ',
-  'Formula Sheet',
-  'Worksheet',
-  'Syllabus',
-];
-const SUBJECTS = [
-  'Mathematics',
-  'Science',
-  'Physics',
-  'Chemistry',
-  'Biology',
-  'English',
-  'Bengali',
-  'Economics',
-];
+const CLASSES = Object.keys(SUBJECT_FEES).map(Number).sort((a, b) => a - b);
+const subjectsForClass = (cls: number) => Object.keys(SUBJECT_FEES[cls] ?? {});
+
+const MAX_FILE_BYTES = 10 * 1024 * 1024;
+const ALLOWED_EXTENSIONS = ['.pdf', '.docx', '.zip'];
+
+function formatBytes(bytes: number) {
+  return bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+}
 
 export default function TeacherStudyMaterialPage() {
-  const [materials, setMaterials] = useState<StudyMaterial[]>(() =>
-    getAllStudyMaterials()
-  );
+  const { data, error, loading, reload, setData } = useApi<{ materials: StudyMaterial[] }>('/api/study-material');
+  const materials = data?.materials ?? [];
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [classFilter, setClassFilter] = useState<string>('all');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   // Form state
   const [formTitle, setFormTitle] = useState('');
   const [formClass, setFormClass] = useState('10');
-  const [formSubject, setFormSubject] = useState('Physics');
+  const [formSubject, setFormSubject] = useState(() => subjectsForClass(10)[0] ?? '');
   const [formCategory, setFormCategory] = useState<MaterialCategory>('Notes');
   const [formDescription, setFormDescription] = useState('');
-  const [formFileSize, setFormFileSize] = useState('2.5 MB');
+  const [formFile, setFormFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const formSubjects = subjectsForClass(Number(formClass));
 
   const filtered = materials.filter((m) => {
     if (classFilter !== 'all' && m.classNumber !== Number(classFilter)) {
@@ -77,41 +69,74 @@ export default function TeacherStudyMaterialPage() {
     return true;
   });
 
+  const resetForm = () => {
+    setFormTitle('');
+    setFormDescription('');
+    setFormFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const closeModal = () => {
+    setShowUploadModal(false);
+    resetForm();
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] ?? null;
+    if (!file) {
+      setFormFile(null);
+      return;
+    }
+    const lower = file.name.toLowerCase();
+    if (!ALLOWED_EXTENSIONS.some((ext) => lower.endsWith(ext))) {
+      toast.error('Only PDF, DOCX or ZIP files can be uploaded.');
+      e.target.value = '';
+      setFormFile(null);
+      return;
+    }
+    if (file.size > MAX_FILE_BYTES) {
+      toast.error('File is larger than 10 MB.');
+      e.target.value = '';
+      setFormFile(null);
+      return;
+    }
+    setFormFile(file);
+  };
+
   const handleUploadSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formTitle.trim()) {
-      toast.error('Please enter a title for the study material');
+    if (formTitle.trim().length < 3) {
+      toast.error('Please enter a title of at least 3 characters');
+      return;
+    }
+    if (!formSubject) {
+      toast.error('Please choose a subject');
+      return;
+    }
+    if (!formFile) {
+      toast.error('Please choose a file to upload');
       return;
     }
 
+    const body = new FormData();
+    body.append('title', formTitle.trim());
+    body.append('description', formDescription.trim());
+    body.append('classNumber', formClass);
+    body.append('subject', formSubject);
+    body.append('category', formCategory);
+    body.append('file', formFile);
+
     setIsSubmitting(true);
     try {
-      const res = await fetch('/api/study-material', {
+      const { material } = await apiFetch<{ material: StudyMaterial }>('/api/study-material', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: formTitle.trim(),
-          description: formDescription.trim(),
-          classNumber: Number(formClass),
-          subject: formSubject,
-          category: formCategory,
-          fileSize: formFileSize,
-          uploadedBy: 'Teacher (Faculty)',
-        }),
+        body,
       });
-
-      const data = await res.json();
-      if (res.ok && data.success) {
-        toast.success('Study material published successfully!');
-        setMaterials((prev) => [data.material, ...prev]);
-        setShowUploadModal(false);
-        setFormTitle('');
-        setFormDescription('');
-      } else {
-        toast.error(data.error || 'Failed to upload study material');
-      }
-    } catch {
-      toast.error('Network error uploading study material');
+      toast.success('Study material published successfully!');
+      setData((prev) => ({ materials: [material, ...(prev?.materials ?? [])] }));
+      closeModal();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to upload study material');
     } finally {
       setIsSubmitting(false);
     }
@@ -120,18 +145,20 @@ export default function TeacherStudyMaterialPage() {
   const handleDelete = async (id: string, title: string) => {
     if (!confirm(`Are you sure you want to delete "${title}"?`)) return;
 
+    setDeletingId(id);
     try {
-      const res = await fetch(`/api/study-material?id=${id}`, {
-        method: 'DELETE',
-      });
-      if (res.ok) {
-        setMaterials((prev) => prev.filter((m) => m.id !== id));
-        toast.success('Study material deleted');
-      }
-    } catch {
-      toast.error('Failed to delete study material');
+      await apiFetch(`/api/study-material?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+      setData((prev) => (prev ? { materials: prev.materials.filter((m) => m.id !== id) } : prev));
+      toast.success('Study material deleted');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to delete study material');
+    } finally {
+      setDeletingId(null);
     }
   };
+
+  if (loading && !data) return <LoadingState label="Loading study material…" />;
+  if (error || !data) return <ErrorState message={error?.message ?? 'Could not load study material.'} onRetry={reload} />;
 
   return (
     <div className="space-y-6">
@@ -188,6 +215,19 @@ export default function TeacherStudyMaterialPage() {
 
       {/* Materials Table */}
       <SectionCard title={`Published Materials (${filtered.length})`} bodyClassName="p-0">
+        {filtered.length === 0 ? (
+          <div className="p-6">
+            <EmptyState
+              icon={BookOpen}
+              title={materials.length === 0 ? 'No study material yet' : 'No matching material'}
+              message={
+                materials.length === 0
+                  ? 'Upload notes, PYQs or worksheets and they will appear here for students.'
+                  : 'Try a different class or search term.'
+              }
+            />
+          </div>
+        ) : (
         <div className="overflow-x-auto">
           <table className="w-full min-w-[700px] text-sm">
             <thead>
@@ -206,7 +246,7 @@ export default function TeacherStudyMaterialPage() {
                   <td className="px-6 py-4">
                     <div className="min-w-0">
                       <p className="font-semibold text-[#1A2B4A]">{item.title}</p>
-                      <p className="text-xs text-[#1295D8] font-medium">{item.subject} · {item.fileSize}</p>
+                      <p className="text-xs text-[#1295D8] font-medium">{item.subject} · {item.fileType}{item.fileSize ? ` · ${item.fileSize}` : ''}</p>
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -225,11 +265,19 @@ export default function TeacherStudyMaterialPage() {
                   <td className="px-6 py-4 whitespace-nowrap text-xs text-gray-500">
                     {item.uploadedBy}
                   </td>
-                  <td className="px-6 py-4 text-right">
+                  <td className="px-6 py-4 text-right whitespace-nowrap">
+                    <a
+                      href={item.fileUrl}
+                      className="inline-flex items-center gap-1 rounded-lg p-1.5 text-[#1295D8] hover:bg-blue-50 hover:text-[#2E5EAA] transition"
+                      title={`Download ${item.fileName ?? item.title}`}
+                    >
+                      <Download size={16} />
+                    </a>
                     <button
                       type="button"
                       onClick={() => handleDelete(item.id, item.title)}
-                      className="inline-flex items-center gap-1 rounded-lg p-1.5 text-red-600 hover:bg-red-50 hover:text-red-700 transition"
+                      disabled={deletingId === item.id}
+                      className="inline-flex items-center gap-1 rounded-lg p-1.5 text-red-600 hover:bg-red-50 hover:text-red-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
                       title="Delete material"
                     >
                       <Trash2 size={16} />
@@ -240,6 +288,7 @@ export default function TeacherStudyMaterialPage() {
             </tbody>
           </table>
         </div>
+        )}
       </SectionCard>
 
       {/* Upload Modal */}
@@ -248,7 +297,7 @@ export default function TeacherStudyMaterialPage() {
           <div className="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl border border-gray-200">
             <button
               type="button"
-              onClick={() => setShowUploadModal(false)}
+              onClick={closeModal}
               className="absolute right-4 top-4 p-1.5 rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition"
             >
               <X size={20} />
@@ -282,7 +331,11 @@ export default function TeacherStudyMaterialPage() {
                   </label>
                   <select
                     value={formClass}
-                    onChange={(e) => setFormClass(e.target.value)}
+                    onChange={(e) => {
+                      setFormClass(e.target.value);
+                      const subs = subjectsForClass(Number(e.target.value));
+                      if (!subs.includes(formSubject)) setFormSubject(subs[0] ?? '');
+                    }}
                     className="w-full rounded-lg border-2 border-gray-300 p-2 text-xs bg-white focus:border-[#1295D8] focus:outline-none"
                   >
                     {CLASSES.map((c) => (
@@ -302,7 +355,7 @@ export default function TeacherStudyMaterialPage() {
                     onChange={(e) => setFormCategory(e.target.value as MaterialCategory)}
                     className="w-full rounded-lg border-2 border-gray-300 p-2 text-xs bg-white focus:border-[#1295D8] focus:outline-none"
                   >
-                    {CATEGORIES.map((cat) => (
+                    {MATERIAL_CATEGORIES.map((cat) => (
                       <option key={cat} value={cat}>
                         {cat}
                       </option>
@@ -320,7 +373,7 @@ export default function TeacherStudyMaterialPage() {
                   onChange={(e) => setFormSubject(e.target.value)}
                   className="w-full rounded-lg border-2 border-gray-300 p-2 text-xs bg-white focus:border-[#1295D8] focus:outline-none"
                 >
-                  {SUBJECTS.map((sub) => (
+                  {formSubjects.map((sub) => (
                     <option key={sub} value={sub}>
                       {sub}
                     </option>
@@ -341,11 +394,31 @@ export default function TeacherStudyMaterialPage() {
                 />
               </div>
 
+              <div>
+                <label htmlFor="material-file" className="block text-xs font-semibold text-gray-700 mb-1">
+                  File * <span className="font-normal text-gray-500">(PDF, DOCX or ZIP, up to 10 MB)</span>
+                </label>
+                <input
+                  id="material-file"
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf,.docx,.zip"
+                  onChange={handleFileChange}
+                  required
+                  className="block w-full rounded-lg border-2 border-dashed border-gray-300 p-2 text-xs text-gray-700 bg-white file:mr-3 file:rounded-md file:border-0 file:bg-[#CDE6F7] file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-[#2E5EAA] hover:file:bg-[#b9dcf3] focus:border-[#1295D8] focus:outline-none"
+                />
+                {formFile && (
+                  <p className="mt-1 flex items-center gap-1 text-[11px] text-gray-600">
+                    <Upload size={12} className="text-[#1295D8]" /> {formFile.name} · {formatBytes(formFile.size)}
+                  </p>
+                )}
+              </div>
+
               <div className="flex gap-3 pt-2">
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => setShowUploadModal(false)}
+                  onClick={closeModal}
                   className="flex-1"
                 >
                   Cancel
@@ -354,6 +427,7 @@ export default function TeacherStudyMaterialPage() {
                   type="submit"
                   variant="primary"
                   isLoading={isSubmitting}
+                  disabled={!formFile || !formTitle.trim()}
                   className="flex-1"
                 >
                   Upload & Publish

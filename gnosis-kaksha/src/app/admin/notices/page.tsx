@@ -11,16 +11,19 @@ import {
   FileText,
   UploadCloud,
   ExternalLink,
-  Download,
-  Link as LinkIcon,
 } from 'lucide-react';
 import { Badge } from '@/components/dashboard/Badge';
 import { EmptyState } from '@/components/dashboard/EmptyState';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
-import { getAdminData, formatDate, InstituteNotice } from '@/lib/institute-data';
+import { LoadingState, ErrorState } from '@/components/dashboard/PageState';
+import { useApi, apiFetch } from '@/hooks/useApi';
+import { formatDate, type InstituteNotice } from '@/lib/institute-data';
 import toast from 'react-hot-toast';
+
+const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024;
+type Audience = InstituteNotice['audience'];
 
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -29,15 +32,16 @@ function formatFileSize(bytes: number): string {
 }
 
 export default function AdminNoticesPage() {
-  const initialData = getAdminData();
-  const [notices, setNotices] = useState<InstituteNotice[]>(initialData.notices);
+  const { data, error, loading, reload, setData } = useApi<{ notices: InstituteNotice[] }>('/api/admin/notices');
+  const notices = data?.notices ?? [];
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // New notice form state
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
-  const [audience, setAudience] = useState<'All' | 'Students' | 'Parents' | 'Staff'>('All');
+  const [audience, setAudience] = useState<Audience>('All');
   const [pinned, setPinned] = useState(false);
 
   // Attachment states
@@ -60,9 +64,9 @@ export default function AdminNoticesPage() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Check size limit: 10 MB
-    if (file.size > 10 * 1024 * 1024) {
-      toast.error('File size exceeds 10MB limit');
+    if (file.size > MAX_ATTACHMENT_BYTES) {
+      toast.error(`${file.name} is ${formatFileSize(file.size)}. Attachments must be 5 MB or smaller — share a link instead.`);
+      e.target.value = '';
       return;
     }
 
@@ -74,6 +78,10 @@ export default function AdminNoticesPage() {
     const reader = new FileReader();
     reader.onload = () => {
       setAttachmentDataUrl(reader.result as string);
+    };
+    reader.onerror = () => {
+      toast.error('Could not read the selected file. Please try again.');
+      removeAttachment();
     };
     reader.readAsDataURL(file);
   };
@@ -111,6 +119,15 @@ export default function AdminNoticesPage() {
     let finalName: string | null = null;
     let finalSize: string | null = null;
 
+    if (attachmentMode === 'file' && attachedFile && !attachmentDataUrl) {
+      toast.error('The attachment is still being read. Please wait a moment and try again.');
+      return;
+    }
+    if (attachmentMode === 'link' && directLinkUrl.trim() && !/^https?:\/\//i.test(directLinkUrl.trim())) {
+      toast.error('Links must start with http:// or https://');
+      return;
+    }
+
     if (attachmentMode === 'file' && attachmentDataUrl) {
       finalUrl = attachmentDataUrl;
       finalName = attachmentName || 'Attached Document';
@@ -123,10 +140,9 @@ export default function AdminNoticesPage() {
 
     setIsSubmitting(true);
     try {
-      const res = await fetch('/api/admin/notices', {
+      const res = await apiFetch<{ notice: InstituteNotice }>('/api/admin/notices', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+        json: {
           title: title.trim(),
           content: content.trim(),
           audience,
@@ -134,19 +150,13 @@ export default function AdminNoticesPage() {
           attachmentUrl: finalUrl,
           attachmentName: finalName,
           attachmentSize: finalSize,
-        }),
+        },
       });
-
-      const data = await res.json();
-      if (res.ok && data.success) {
-        toast.success('Notice published successfully!');
-        setNotices((prev) => [data.notice, ...prev]);
-        resetForm();
-      } else {
-        toast.error(data.error || 'Failed to publish notice');
-      }
-    } catch {
-      toast.error('An error occurred while publishing notice');
+      toast.success('Notice published successfully!');
+      setData((prev) => ({ notices: [res.notice, ...(prev?.notices ?? [])] }));
+      resetForm();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to publish notice');
     } finally {
       setIsSubmitting(false);
     }
@@ -155,21 +165,20 @@ export default function AdminNoticesPage() {
   const handleDeleteNotice = async (id: string, noticeTitle: string) => {
     if (!confirm(`Are you sure you want to delete notice "${noticeTitle}"?`)) return;
 
+    setDeletingId(id);
     try {
-      const res = await fetch(`/api/admin/notices?id=${encodeURIComponent(id)}`, {
-        method: 'DELETE',
-      });
-
-      if (res.ok) {
-        toast.success('Notice removed');
-        setNotices((prev) => prev.filter((n) => n.id !== id));
-      } else {
-        toast.error('Failed to delete notice');
-      }
-    } catch {
-      toast.error('An error occurred while deleting notice');
+      await apiFetch(`/api/admin/notices?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+      toast.success('Notice removed');
+      setData((prev) => (prev ? { notices: prev.notices.filter((n) => n.id !== id) } : prev));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to delete notice');
+    } finally {
+      setDeletingId(null);
     }
   };
+
+  if (error) return <ErrorState message={error.message} onRetry={reload} />;
+  if (loading && !data) return <LoadingState label="Loading notices…" />;
 
   return (
     <div className="space-y-6">
@@ -219,11 +228,16 @@ export default function AdminNoticesPage() {
                   <button
                     type="button"
                     onClick={() => handleDeleteNotice(n.id, n.title)}
+                    disabled={deletingId === n.id}
                     title="Delete notice"
                     aria-label="Delete notice"
-                    className="rounded-md p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 transition"
+                    className="rounded-md p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 transition disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    <Trash2 size={16} />
+                    {deletingId === n.id ? (
+                      <span className="block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                    ) : (
+                      <Trash2 size={16} />
+                    )}
                   </button>
                 </div>
               </div>
@@ -267,6 +281,7 @@ export default function AdminNoticesPage() {
             <button
               type="button"
               onClick={resetForm}
+              aria-label="Close"
               className="absolute right-4 top-4 p-1.5 rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition"
             >
               <X size={20} />
@@ -297,7 +312,7 @@ export default function AdminNoticesPage() {
                   { value: 'Staff', label: 'Staff' },
                 ]}
                 value={audience}
-                onChange={(e) => setAudience(e.target.value as any)}
+                onChange={(e) => setAudience(e.target.value as Audience)}
               />
 
               <div>
@@ -396,7 +411,7 @@ export default function AdminNoticesPage() {
                           Click to select a file to attach
                         </p>
                         <p className="text-[10px] text-gray-400 mt-0.5">
-                          PDF, Word Docs, Excel, or Images up to 10MB
+                          PDF, Word Docs, Excel, or Images up to 5 MB
                         </p>
                       </div>
                     )}

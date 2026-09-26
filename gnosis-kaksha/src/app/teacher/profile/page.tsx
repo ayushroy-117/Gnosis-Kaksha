@@ -6,23 +6,19 @@ import {
   User,
   Printer,
   ShieldCheck,
-  Phone,
   Mail,
-  MapPin,
   Calendar,
   Briefcase,
-  GraduationCap,
-  Award,
   Sparkles,
-  BookOpen,
-  Heart,
   RotateCw,
 } from 'lucide-react';
 import { SectionCard } from '@/components/dashboard/SectionCard';
 import { Badge } from '@/components/dashboard/Badge';
 import { Button } from '@/components/ui/Button';
 import { useAuth } from '@/hooks/useAuth';
+import { LoadingState } from '@/components/dashboard/PageState';
 import { QRCodeSVG } from 'qrcode.react';
+import { OFFICE_PHONE_DISPLAY } from '@/lib/institute-contact';
 
 /* ── Barcode Generator for Teacher ID ── */
 function TeacherBarcode({ value }: { value: string }) {
@@ -97,35 +93,34 @@ function ProfileItem({ label, value, icon }: { label: string; value: string; ico
   );
 }
 
+const ROLE_LABELS: Record<string, string> = {
+  teacher: 'Faculty Member',
+  admin: 'Administrator',
+  accountant: 'Accountant',
+};
+
 export default function TeacherProfilePage() {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
   const [activeTab, setActiveTab] = useState<'both' | 'front' | 'back'>('both');
   const [isFlipped, setIsFlipped] = useState(false);
 
-  // Faculty details
+  // Identity comes from the signed-in account. Employment/personal details
+  // (joining date, blood group, address…) are not stored yet, so they are not shown.
   const teacher = useMemo(() => {
+    const role = user?.role ?? 'teacher';
     return {
-      fullName: user?.fullName || 'Ankur Kumar Nath',
-      employeeId: 'GK-FAC-101',
-      designation: 'Senior Faculty — Physics & Science Specialist',
-      department: 'Department of Pure & Applied Sciences',
-      qualification: 'B.Sc in Physics (Hons), B.Ed',
-      joiningDate: '01 June 2024',
-      employmentType: 'Full-Time Permanent Senior Faculty',
-      assignedClasses: 'Class 9, Class 10 (Foundation & Boards), Class 11-12 (Physics Special)',
-      email: user?.email || 'teacher@gnosiskaksha.in',
-      mobile: '+91 94350 12345',
-      emergencyContact: '+91 98765 43210 (Family)',
-      bloodGroup: 'O+',
-      address: 'Main Road, Ramkrishna Nagar, District: Karimganj, Assam – 788713',
-      teachingExperience: '6+ Years in Board & Competitive Exam Coaching',
-      photoUrl: 'https://gnosiskaksha.in/php/uploaded_profile/ankur.webp',
+      fullName: user?.fullName || user?.email || 'Faculty Member',
+      email: user?.email || '—',
+      employeeId: user ? `GK-${role === 'teacher' ? 'FAC' : role.slice(0, 3).toUpperCase()}-${user.id.replace(/-/g, '').slice(0, 6).toUpperCase()}` : '—',
+      designation: ROLE_LABELS[role] ?? 'Faculty Member',
     };
   }, [user]);
 
   const handlePrint = () => {
     window.print();
   };
+
+  if (loading && !user) return <LoadingState label="Loading profile…" />;
 
   return (
     <div className="space-y-8">
@@ -292,21 +287,12 @@ export default function TeacherProfilePage() {
                   {/* Photo Column */}
                   <div className="flex flex-col items-center gap-1.5 shrink-0">
                     <div className="relative h-[112px] w-[90px] rounded-lg border-2 border-[#1E3A8A] bg-blue-50/60 p-0.5 shadow-sm overflow-hidden flex flex-col items-center justify-center">
-                      {teacher.photoUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={teacher.photoUrl}
-                          alt={teacher.fullName}
-                          className="h-full w-full object-cover rounded-md"
-                        />
-                      ) : (
-                        <div className="flex flex-col items-center justify-center text-[#1E3A8A]">
-                          <User size={40} strokeWidth={1.5} />
-                          <span className="mt-1 text-[8px] font-extrabold tracking-widest text-slate-500">
-                            PHOTO
-                          </span>
-                        </div>
-                      )}
+                      <div className="flex flex-col items-center justify-center text-[#1E3A8A]">
+                        <User size={40} strokeWidth={1.5} />
+                        <span className="mt-1 text-[8px] font-extrabold tracking-widest text-slate-500">
+                          PHOTO
+                        </span>
+                      </div>
                     </div>
                     <span className="inline-block rounded-full bg-[#1E293B] px-2.5 py-0.5 text-[8px] font-black text-amber-300 shadow-xs tracking-wider">
                       {teacher.employeeId}
@@ -335,40 +321,13 @@ export default function TeacherProfilePage() {
 
                     <div>
                       <p className="text-[7.5px] font-bold uppercase tracking-wider text-slate-400 leading-none">
-                        Department
+                        Email
                       </p>
                       <p className="text-[9.5px] font-semibold text-slate-800 leading-tight truncate mt-0.5">
-                        {teacher.department}
+                        {teacher.email}
                       </p>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-1">
-                      <div>
-                        <p className="text-[7.5px] font-bold uppercase tracking-wider text-slate-400 leading-none">
-                          Joining Date
-                        </p>
-                        <p className="text-[9px] font-bold text-slate-800 leading-tight mt-0.5">
-                          {teacher.joiningDate}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-[7.5px] font-bold uppercase tracking-wider text-slate-400 leading-none">
-                          Blood Group
-                        </p>
-                        <p className="text-[9px] font-bold text-red-600 leading-tight mt-0.5">
-                          {teacher.bloodGroup}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div>
-                      <p className="text-[7.5px] font-bold uppercase tracking-wider text-slate-400 leading-none">
-                        Contact Number
-                      </p>
-                      <p className="text-[9.5px] font-semibold text-slate-800 leading-tight mt-0.5">
-                        {teacher.mobile}
-                      </p>
-                    </div>
                   </div>
                 </div>
 
@@ -426,7 +385,7 @@ export default function TeacherProfilePage() {
               {/* ── Bottom Strip ── */}
               <div className="relative z-10 bg-[#0F172A] px-3 py-1 flex items-center justify-between text-[7.5px] text-slate-300">
                 <span>web: www.gnosiskaksha.cloud</span>
-                <span>helpline: +91 94350 12345</span>
+                <span>helpline: {OFFICE_PHONE_DISPLAY}</span>
               </div>
             </div>
           )}
@@ -463,7 +422,6 @@ export default function TeacherProfilePage() {
                   'This card serves as authorized faculty identification for academic batches, evaluations, and official meetings.',
                   'In case of card loss or damage, immediately notify the Administration Office for a reissue.',
                   'Faculty members are expected to uphold the highest standards of academic excellence and professional ethics.',
-                  'Emergency medical assistance: Refer to the blood group and emergency contact number on this card.',
                 ].map((rule, idx) => (
                   <div key={idx} className="flex items-start gap-2">
                     <span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full bg-[#1E3A8A] text-[7px] font-bold text-white shadow-2xs mt-0.5">
@@ -480,7 +438,7 @@ export default function TeacherProfilePage() {
                   🚨 EMERGENCY MEDICAL &amp; CAMPUS CONTACT
                 </p>
                 <p className="text-[7.5px] font-semibold text-red-800 leading-tight mt-0.5">
-                  Blood Group: <strong className="text-red-700 font-bold">{teacher.bloodGroup}</strong> • Emergency: {teacher.emergencyContact}
+                  Institute helpline: {OFFICE_PHONE_DISPLAY}
                 </p>
                 <p className="text-[7px] text-gray-600 leading-tight mt-0.5">
                   Main Road, Ramkrishna Nagar, Karimganj, Assam – 788713
@@ -499,8 +457,8 @@ export default function TeacherProfilePage() {
                     <span className="font-bold text-[#1295D8] font-mono">{teacher.employeeId}</span>
                   </div>
                   <div>
-                    <span className="font-bold text-slate-400 uppercase">Joined: </span>
-                    <span className="font-bold text-slate-800">{teacher.joiningDate}</span>
+                    <span className="font-bold text-slate-400 uppercase">Role: </span>
+                    <span className="font-bold text-slate-800">{teacher.designation}</span>
                   </div>
                   <div>
                     <span className="font-bold text-slate-400 uppercase">Valid: </span>
@@ -528,56 +486,33 @@ export default function TeacherProfilePage() {
         {/* Profile Hero Card */}
         <div className="flex flex-col items-center gap-5 rounded-2xl border border-gray-200 bg-white p-6 shadow-xs sm:flex-row sm:items-center">
           <div className="relative h-24 w-24 shrink-0 rounded-2xl border-2 border-[#1295D8] bg-[#CDE6F7] p-1 shadow-xs overflow-hidden flex items-center justify-center">
-            {teacher.photoUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={teacher.photoUrl} alt={teacher.fullName} className="h-full w-full object-cover rounded-xl" />
-            ) : (
-              <User size={48} className="text-[#1295D8]" />
-            )}
+            <User size={48} className="text-[#1295D8]" />
           </div>
 
           <div className="flex-1 text-center sm:text-left">
             <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
               <h2 className="text-2xl font-black text-[#1A2B4A]">{teacher.fullName}</h2>
-              <Badge tone="green">Active Permanent Faculty</Badge>
+              <Badge tone="green">Active Staff</Badge>
               <Badge tone="blue">{teacher.employeeId}</Badge>
             </div>
             <p className="text-sm font-semibold text-[#1295D8] mt-1">{teacher.designation}</p>
-            <p className="text-xs text-gray-500 mt-0.5">{teacher.department}</p>
+            <p className="text-xs text-gray-500 mt-0.5">{teacher.email}</p>
           </div>
         </div>
 
-        {/* Detailed Employment & Educational Grid */}
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          {/* Section 1: Employment Details */}
-          <SectionCard title="Employment & Institutional Details">
-            <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <ProfileItem label="Employee ID" value={teacher.employeeId} icon={<Briefcase size={16} />} />
-              <ProfileItem label="Job Joining Date" value={teacher.joiningDate} icon={<Calendar size={16} />} />
-              <ProfileItem label="Employment Status" value={teacher.employmentType} icon={<ShieldCheck size={16} />} />
-              <ProfileItem label="Teaching Experience" value={teacher.teachingExperience} icon={<Award size={16} />} />
-              <div className="sm:col-span-2">
-                <ProfileItem label="Assigned Batches / Classes" value={teacher.assignedClasses} icon={<BookOpen size={16} />} />
-              </div>
-            </dl>
-          </SectionCard>
-
-          {/* Section 2: Personal & Contact Information */}
-          <SectionCard title="Personal & Contact Details">
-            <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <ProfileItem label="Official Email" value={teacher.email} icon={<Mail size={16} />} />
-              <ProfileItem label="Direct Mobile" value={teacher.mobile} icon={<Phone size={16} />} />
-              <ProfileItem label="Highest Qualification" value={teacher.qualification} icon={<GraduationCap size={16} />} />
-              <ProfileItem label="Blood Group" value={teacher.bloodGroup} icon={<Heart size={16} />} />
-              <div className="sm:col-span-2">
-                <ProfileItem label="Emergency Contact" value={teacher.emergencyContact} icon={<Phone size={16} />} />
-              </div>
-              <div className="sm:col-span-2">
-                <ProfileItem label="Residential Address" value={teacher.address} icon={<MapPin size={16} />} />
-              </div>
-            </dl>
-          </SectionCard>
-        </div>
+        {/* Account Details */}
+        <SectionCard title="Account Details">
+          <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <ProfileItem label="Full Name" value={teacher.fullName} icon={<User size={16} />} />
+            <ProfileItem label="Official Email" value={teacher.email} icon={<Mail size={16} />} />
+            <ProfileItem label="Role" value={teacher.designation} icon={<Briefcase size={16} />} />
+            <ProfileItem label="Staff ID" value={teacher.employeeId} icon={<ShieldCheck size={16} />} />
+          </dl>
+          <p className="mt-4 text-xs text-[#718096]">
+            Employment and personal details (qualification, joining date, contact number, address) are not on file yet.
+            Contact the administration office to have them added.
+          </p>
+        </SectionCard>
       </div>
 
       {/* ── Global Print Styles for Teacher ID Card ── */}

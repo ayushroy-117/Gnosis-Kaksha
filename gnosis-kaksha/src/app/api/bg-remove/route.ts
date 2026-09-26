@@ -79,10 +79,10 @@ export async function POST(request: NextRequest) {
         'Content-Disposition': 'attachment; filename="removed-bg.png"',
       },
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('bg-remove API error:', error);
     return NextResponse.json(
-      { error: error?.message || 'Unexpected error during background removal' },
+      { error: 'Background removal failed. Please try again.' },
       { status: 500 }
     );
   }

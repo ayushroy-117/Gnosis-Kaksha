@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 /** Error carrying the HTTP status, so pages can tell 401/403 from outages. */
 export class ApiError extends Error {
@@ -36,31 +36,45 @@ export async function apiFetch<T = unknown>(url: string, init?: RequestInit & { 
   return data as T;
 }
 
-/** Load JSON from `url` (skip when null). Re-fetches when the URL changes. */
+/** Load JSON from `url` (skip when null). Re-fetches when the URL changes or on reload(). */
 export function useApi<T>(url: string | null) {
-  const [data, setData] = useState<T | null>(null);
-  const [error, setError] = useState<ApiError | null>(null);
-  const [loading, setLoading] = useState<boolean>(url !== null);
-  const latest = useRef(0);
-
-  const load = useCallback(async () => {
-    if (!url) return;
-    const call = ++latest.current;
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await apiFetch<T>(url);
-      if (call === latest.current) setData(result);
-    } catch (err) {
-      if (call === latest.current) setError(err instanceof ApiError ? err : new ApiError(String(err), 0));
-    } finally {
-      if (call === latest.current) setLoading(false);
-    }
-  }, [url]);
+  const [nonce, setNonce] = useState(0);
+  const key = url === null ? null : `${url}#${nonce}`;
+  const [result, setResult] = useState<{ key: string | null; data: T | null; error: ApiError | null }>({
+    key: null,
+    data: null,
+    error: null,
+  });
 
   useEffect(() => {
-    load();
-  }, [load]);
+    if (url === null) return;
+    let cancelled = false;
+    apiFetch<T>(url).then(
+      (data) => {
+        if (!cancelled) setResult({ key, data, error: null });
+      },
+      (err) => {
+        if (!cancelled) {
+          setResult((prev) => ({ key, data: prev.data, error: err instanceof ApiError ? err : new ApiError(String(err), 0) }));
+        }
+      }
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [url, key]);
 
-  return { data, error, loading, reload: load, setData };
+  const reload = useCallback(() => setNonce((n) => n + 1), []);
+  const setData = useCallback(
+    (update: T | null | ((prev: T | null) => T | null)) =>
+      setResult((prev) => ({
+        ...prev,
+        data: typeof update === 'function' ? (update as (p: T | null) => T | null)(prev.data) : update,
+      })),
+    []
+  );
+
+  // Previous data stays visible while a reload is in flight.
+  const loading = key !== null && result.key !== key;
+  return { data: result.data, error: loading ? null : result.error, loading, reload, setData };
 }

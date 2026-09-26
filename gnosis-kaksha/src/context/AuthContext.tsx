@@ -30,8 +30,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    refresh();
-  }, [refresh]);
+    let cancelled = false;
+    fetchMe().then((me) => {
+      if (cancelled) return;
+      setUser(me.user);
+      setPermissions(me.permissions);
+      setLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const signIn = async (identifier: string, password: string) => {
     const result = await authSignIn(identifier, password);

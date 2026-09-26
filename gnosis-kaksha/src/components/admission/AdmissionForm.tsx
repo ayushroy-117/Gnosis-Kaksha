@@ -16,7 +16,6 @@ import {
   ExternalLink,
   Printer,
   ArrowRight,
-  GraduationCap,
   ShieldCheck,
   CreditCard,
   QrCode,
@@ -25,17 +24,22 @@ import { BillingSidebar } from './BillingSidebar';
 import { calculateBill, calculateScholarship, SUBJECT_FEES } from '@/lib/fees';
 import { useAuth } from '@/hooks/useAuth';
 import { useRouter } from 'next/navigation';
+import { UPI_ID, upiPayUrl } from '@/lib/upi';
 import { QRCodeSVG } from 'qrcode.react';
 import { ReceiptSheet } from '@/components/dashboard/OfficialFeeReceiptModal';
 import toast from 'react-hot-toast';
 
 // Validation schemas for each step
-const step1Schema = z.object({
-  fullName: z.string().min(2, 'Full name is required'),
-  email: z.string().email('Valid email is required'),
-  phone: z.string().min(10, 'Valid phone number is required'),
-  dob: z.string().min(1, 'Date of birth is required'),
-});
+const step1Schema = z
+  .object({
+    fullName: z.string().trim().min(2, 'Full name is required'),
+    email: z.string().trim().email('Valid email is required'),
+    phone: z.string().trim().regex(/^(\+91[\s-]?)?[6-9]\d{9}$/, 'Enter a valid 10-digit mobile number'),
+    dob: z.string().min(1, 'Date of birth is required'),
+    password: z.string().min(8, 'Password must be at least 8 characters'),
+    confirmPassword: z.string().min(1, 'Please confirm your password'),
+  })
+  .refine((d) => d.password === d.confirmPassword, { message: 'Passwords do not match', path: ['confirmPassword'] });
 
 const step2Schema = z.object({
   currentClass: z.string().min(1, 'Current class is required'),
@@ -51,9 +55,9 @@ const step4Schema = z.object({
   address: z.string().min(5, 'Address is required'),
   city: z.string().min(2, 'City is required'),
   state: z.string().min(2, 'State is required'),
-  pincode: z.string().min(6, 'Valid pincode is required'),
+  pincode: z.string().trim().regex(/^\d{6}$/, 'Enter a valid 6-digit pincode'),
   parentName: z.string().min(2, 'Parent name is required'),
-  parentPhone: z.string().min(10, 'Valid phone number is required'),
+  parentPhone: z.string().trim().regex(/^(\+91[\s-]?)?[6-9]\d{9}$/, 'Enter a valid 10-digit mobile number'),
 });
 
 const step5Schema = z.object({
@@ -63,7 +67,10 @@ const step5Schema = z.object({
 
 const step6Schema = z.object({
   tshirtSize: z.string().min(1, 'T-shirt size is required'),
-  upiUtr: z.string().min(8, 'Enter valid UPI Transaction ID / UTR (min 8 characters)'),
+  upiUtr: z
+    .string()
+    .transform((v) => v.replace(/[\s-]/g, ''))
+    .pipe(z.string().regex(/^[A-Za-z0-9]{10,35}$/, 'Enter the UPI transaction ID from your payment app (usually 12 digits)')),
   paymentConfirmed: z.boolean().refine(val => val === true, 'Please confirm payment completion'),
   agreeTerms: z.boolean().refine(val => val === true, 'You must agree to terms'),
 });
@@ -84,7 +91,6 @@ const SUBJECTS_BY_CLASS: Record<number, string[]> = {
   12: ['Physics', 'Chemistry', 'Biology', 'Mathematics', 'English', 'History', 'Political Science', 'Economics', 'Bengali'],
 };
 
-const UPI_ID = 'gnosiskaksha@upi';
 
 interface SubmissionSuccessData {
   student: {
@@ -112,8 +118,9 @@ interface SubmissionSuccessData {
 
 export function AdmissionForm() {
   const router = useRouter();
-  const { signIn } = useAuth();
+  const { refresh } = useAuth();
   const [currentStep, setCurrentStep] = useState(1);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- the form spans six step schemas
   const [formData, setFormData] = useState<Record<string, any>>({
     tshirtSize: 'm',
     subjects: [],
@@ -121,11 +128,13 @@ export function AdmissionForm() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successData, setSuccessData] = useState<SubmissionSuccessData | null>(null);
 
+  /* eslint-disable @typescript-eslint/no-explicit-any -- resolver switches schema per step */
   const form = useForm<any>({
-    resolver: zodResolver([step1Schema, step2Schema, step3Schema, step4Schema, step5Schema, step6Schema][currentStep - 1]) as any,
+    resolver: zodResolver([step1Schema, step2Schema, step3Schema, step4Schema, step5Schema, step6Schema][currentStep - 1] as any) as any,
     mode: 'onChange',
     defaultValues: formData,
   });
+  /* eslint-enable @typescript-eslint/no-explicit-any */
 
   const errors = form.formState.errors as Record<string, { message?: string } | undefined>;
 
@@ -149,10 +158,10 @@ export function AdmissionForm() {
 
   const payableAmount = billDetails?.finalPayable || 950;
 
-  const upiIntentUrl = useMemo(() => {
-    const studentName = encodeURIComponent(formData.fullName || 'Student');
-    return `upi://pay?pa=${UPI_ID}&pn=Gnosis+Kaksha&am=${payableAmount}&cu=INR&tn=Admission+Fee+${studentName}`;
-  }, [payableAmount, formData.fullName]);
+  const upiIntentUrl = useMemo(
+    () => upiPayUrl({ amount: payableAmount, note: `Admission fee ${formData.fullName || ''}`.trim() }),
+    [payableAmount, formData.fullName]
+  );
 
   const handleNext = async () => {
     const isValid = await form.trigger();
@@ -196,10 +205,20 @@ export function AdmissionForm() {
       const resData = await response.json();
 
       if (response.ok && resData.success) {
-        toast.success('Admission & payment submitted successfully!');
+        toast.success('Application submitted! Your payment is awaiting verification.');
         setSuccessData(resData);
+        refresh();
       } else {
-        toast.error(resData.error || 'Failed to submit form. Please verify your details.');
+        const message = resData.error || 'Failed to submit form. Please verify your details.';
+        // Send the applicant back to the step that holds the offending field.
+        const stepFor: Record<string, number> = { email: 1, password: 1, phone: 1, dob: 1, fullName: 1, schoolName: 2, previousPercentage: 2, currentClass: 2, subjects: 3, pincode: 4, parentPhone: 4, address: 4 };
+        const step = resData.field ? stepFor[resData.field as string] : undefined;
+        if (step && step !== currentStep) {
+          setFormData(finalData);
+          setCurrentStep(step);
+          form.reset(finalData);
+        }
+        toast.error(message, { duration: 6000 });
       }
     } catch {
       toast.error('An error occurred while submitting admission. Please try again.');
@@ -215,7 +234,7 @@ export function AdmissionForm() {
 
   const handleEnterStudentPortal = async () => {
     if (successData) {
-      await signIn(successData.student.registrationNumber, 'gk2026');
+      await refresh();
       router.push('/student/dashboard');
     }
   };
@@ -252,13 +271,14 @@ export function AdmissionForm() {
               </div>
               <div>
                 <span className="inline-flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full mb-1">
-                  <ShieldCheck size={12} /> Admission Confirmed
+                  <ShieldCheck size={12} /> Application Submitted
                 </span>
                 <h2 className="text-xl font-black text-[#1A2B4A]">
                   Welcome, {successData.student.fullName}!
                 </h2>
                 <p className="text-xs text-[#718096]">
-                  Registration: <span className="font-mono font-bold text-[#1295D8]">{successData.student.registrationNumber}</span> · Official Receipt Generated Below
+                  Registration: <span className="font-mono font-bold text-[#1295D8]">{successData.student.registrationNumber}</span> · Payment
+                  awaiting verification — your official receipt is issued once the office confirms it
                 </p>
               </div>
             </div>
@@ -303,7 +323,7 @@ export function AdmissionForm() {
             amount: paidAmount,
             method: 'UPI',
             utr: successData.receipt?.utr || formData.upiUtr || '—',
-            status: 'verified',
+            status: 'pending',
           }}
           student={{
             fullName: successData.student.fullName || formData.fullName,
@@ -318,7 +338,6 @@ export function AdmissionForm() {
           copyType="STUDENT COPY"
           credentials={{
             username: successData.student.registrationNumber,
-            password: 'gk2026',
           }}
         />
       </div>
@@ -389,6 +408,27 @@ export function AdmissionForm() {
                   {...form.register('dob')}
                   error={errors.dob?.message}
                 />
+                <div className="rounded-lg border border-[#CDE6F7] bg-[#F0F7FD] p-4 space-y-4">
+                  <p className="text-sm text-[#2E5EAA]">
+                    Choose a password for the student portal. You&apos;ll sign in with your registration number (given
+                    after you submit) or this email.
+                  </p>
+                  <Input
+                    label="Portal Password"
+                    type="password"
+                    autoComplete="new-password"
+                    placeholder="At least 8 characters"
+                    {...form.register('password')}
+                    error={errors.password?.message}
+                  />
+                  <Input
+                    label="Confirm Password"
+                    type="password"
+                    autoComplete="new-password"
+                    {...form.register('confirmPassword')}
+                    error={errors.confirmPassword?.message}
+                  />
+                </div>
               </div>
             )}
 

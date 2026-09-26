@@ -1,40 +1,53 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useMemo } from 'react';
 import { Card } from '@/components/ui/Card';
-import { Pin, Bell, Paperclip, ExternalLink, Download } from 'lucide-react';
+import { Pin, Bell, Paperclip, ExternalLink, RotateCw } from 'lucide-react';
+import { useApi } from '@/hooks/useApi';
+
+interface PublicNoticeRow {
+  id: string;
+  title: string;
+  content: string;
+  published_at: string;
+  is_pinned: boolean;
+  external_url: string | null;
+  attachmentName: string | null;
+  attachmentSize: string | null;
+}
+
+interface NoticeView {
+  id: string;
+  title: string;
+  content: string;
+  date: string;
+  isPinned: boolean;
+  external_url: string | null;
+  attachmentName: string;
+  attachmentSize: string | null;
+}
 
 export default function Notices() {
-  const [notices, setNotices] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
+  const { data, error, loading, reload } = useApi<{ notices: PublicNoticeRow[] }>('/api/notices');
 
-  useEffect(() => {
-    fetch('/api/notices')
-      .then((res) => {
-        if (!res.ok) throw new Error('Failed to fetch notices');
-        return res.json();
-      })
-      .then((data) => {
-        const mapped = (data.notices ?? []).map((notice: any) => ({
-          id: notice.id,
-          title: notice.title,
-          content: notice.content,
-          date: notice.published_at || notice.date,
-          isPinned: notice.is_pinned ?? notice.isPinned ?? notice.pinned,
-          external_url: notice.external_url || notice.attachmentUrl || null,
-          attachmentName:
-            notice.attachmentName ||
-            (notice.external_url
-              ? notice.external_url.split('/').pop()?.split('?')[0] || 'Attached Document'
-              : 'Attached Document'),
-          attachmentSize: notice.attachmentSize || null,
-        }));
-        setNotices(mapped);
-      })
-      .catch(() => setError(true))
-      .finally(() => setLoading(false));
-  }, []);
+  const notices = useMemo<NoticeView[]>(
+    () =>
+      (data?.notices ?? []).map((notice) => ({
+        id: notice.id,
+        title: notice.title,
+        content: notice.content,
+        date: notice.published_at,
+        isPinned: Boolean(notice.is_pinned),
+        external_url: notice.external_url || null,
+        attachmentName:
+          notice.attachmentName ||
+          (notice.external_url
+            ? notice.external_url.split('/').pop()?.split('?')[0] || 'Attached Document'
+            : 'Attached Document'),
+        attachmentSize: notice.attachmentSize || null,
+      })),
+    [data]
+  );
 
   const pinnedNotices = notices.filter((n) => n.isPinned);
   const regularNotices = notices.filter((n) => !n.isPinned);
@@ -52,7 +65,7 @@ export default function Notices() {
         </div>
 
         {/* Loading skeleton */}
-        {loading && (
+        {loading && !data && (
           <div className="space-y-5">
             {Array.from({ length: 3 }).map((_, i) => (
               <div
@@ -74,11 +87,30 @@ export default function Notices() {
             <p className="text-[#4A5568] text-lg font-medium">
               Notices currently unavailable. Please check back shortly.
             </p>
+            <p className="mt-1 text-sm text-[#718096]">{error.message}</p>
+            <button
+              type="button"
+              onClick={reload}
+              className="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-[#1295D8] shadow-sm transition hover:bg-blue-50"
+            >
+              <RotateCw size={14} /> Try again
+            </button>
+          </div>
+        )}
+
+        {/* Empty state */}
+        {!loading && !error && data && notices.length === 0 && (
+          <div className="text-center py-24">
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-blue-100 text-[#1295D8]">
+              <Bell className="h-6 w-6" />
+            </div>
+            <p className="text-[#4A5568] text-lg font-medium">No notices published yet.</p>
+            <p className="mt-1 text-sm text-[#718096]">New announcements from the institute will appear here.</p>
           </div>
         )}
 
         {/* Content */}
-        {!loading && !error && (
+        {!loading && !error && notices.length > 0 && (
           <>
             {/* Pinned Notices */}
             {pinnedNotices.length > 0 && (
@@ -145,6 +177,7 @@ export default function Notices() {
             )}
 
             {/* Regular Notices */}
+            {regularNotices.length > 0 && (
             <div>
               <h2 className="text-2xl font-bold text-[#1A2B4A] mb-6">Latest Updates</h2>
               <div className="space-y-4">
@@ -192,6 +225,7 @@ export default function Notices() {
                 ))}
               </div>
             </div>
+            )}
           </>
         )}
       </div>

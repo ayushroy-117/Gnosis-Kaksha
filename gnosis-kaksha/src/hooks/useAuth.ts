@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useContext } from 'react';
+import { useContext } from 'react';
 import { AuthContext } from '@/context/AuthContext';
 
 /**

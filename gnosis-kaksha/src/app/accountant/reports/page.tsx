@@ -1,52 +1,92 @@
 'use client';
 
 import { useMemo } from 'react';
-import { BarChart3, FileSpreadsheet, Printer, Users, TrendingUp, DollarSign } from 'lucide-react';
+import { BarChart3, FileSpreadsheet, Printer } from 'lucide-react';
 import { SectionCard } from '@/components/dashboard/SectionCard';
-import { getAccountantData, formatINR } from '@/lib/institute-data';
+import { EmptyState } from '@/components/dashboard/EmptyState';
+import { LoadingState, ErrorState } from '@/components/dashboard/PageState';
+import { useApi } from '@/hooks/useApi';
+import { formatINR, type AccountantData } from '@/lib/institute-data';
 import toast from 'react-hot-toast';
 
+/** "YYYY-MM" for the current month in IST — matches the server's month bucketing. */
+function currentMonthKey(): string {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }).slice(0, 7);
+}
+
+function csvCell(value: string | number): string {
+  const str = String(value ?? '');
+  return /[",\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
+}
+
 export default function AccountantReportsPage() {
-  const { roster, stats, currentPeriod } = getAccountantData();
+  const { data, error, loading, reload } = useApi<AccountantData>('/api/data/accountant');
 
+  const roster = useMemo(() => data?.roster ?? [], [data]);
+  const transactions = useMemo(() => data?.transactions ?? [], [data]);
   const activeStudents = useMemo(() => roster.filter((s) => s.status === 'active'), [roster]);
-  const activeCount = activeStudents.length;
-  const collected = stats.collectedThisMonth;
-  const outstanding = stats.pendingDues;
-  const billed = collected + outstanding;
-  const collectionRate = billed > 0 ? Math.round((collected / billed) * 100) : 0;
-  const paidCount = activeCount - stats.defaulterCount;
 
-  // Class-wise breakdown
+  // Verified payments this month (same rule as the server's collectedThisMonth).
+  const verifiedThisMonth = useMemo(() => {
+    const month = currentMonthKey();
+    return transactions.filter((t) => t.status === 'verified' && (t.verifiedAt ?? t.date).startsWith(month));
+  }, [transactions]);
+
+  // Class-wise breakdown, computed from roster + verified transactions.
   const classBreakdown = useMemo(() => {
+    const classOf = new Map(roster.map((s) => [s.id, s.classNumber]));
     const map = new Map<number, { count: number; billed: number; collected: number; due: number }>();
+    const entryFor = (cls: number) => {
+      let entry = map.get(cls);
+      if (!entry) {
+        entry = { count: 0, billed: 0, collected: 0, due: 0 };
+        map.set(cls, entry);
+      }
+      return entry;
+    };
 
     for (const s of activeStudents) {
-      const entry = map.get(s.classNumber) || { count: 0, billed: 0, collected: 0, due: 0 };
+      const entry = entryFor(s.classNumber);
       entry.count += 1;
       entry.billed += s.tuitionAfterScholarship;
-      if (s.feeState === 'paid') {
-        entry.collected += s.tuitionAfterScholarship;
-      } else {
-        entry.due += s.amountDue;
-      }
-      map.set(s.classNumber, entry);
+      if (s.feeState === 'due' && s.amountDue > 0) entry.due += s.amountDue;
+    }
+    for (const t of verifiedThisMonth) {
+      const cls = classOf.get(t.studentId);
+      if (cls !== undefined) entryFor(cls).collected += t.amount;
     }
 
     return [...map.entries()]
-      .map(([classNum, data]) => ({
+      .map(([classNum, d]) => ({
         classNum,
-        ...data,
-        rate: data.billed > 0 ? Math.round((data.collected / data.billed) * 100) : 0,
+        ...d,
+        rate: d.collected + d.due > 0 ? Math.round((d.collected / (d.collected + d.due)) * 100) : 100,
       }))
       .sort((a, b) => a.classNum - b.classNum);
-  }, [activeStudents]);
+  }, [roster, activeStudents, verifiedThisMonth]);
+
+  if (loading && !data) return <LoadingState label="Loading reports…" />;
+  if (error && !data) return <ErrorState message={error.message} onRetry={reload} />;
+  if (!data) return null;
+
+  const { stats, currentPeriod } = data;
+  const activeCount = activeStudents.length;
+  const billed = activeStudents.reduce((sum, s) => sum + s.tuitionAfterScholarship, 0);
+  const collected = stats.collectedThisMonth;
+  const outstanding = stats.pendingDues;
+  const expected = collected + outstanding;
+  const collectionRate = expected > 0 ? Math.round((collected / expected) * 100) : 0;
+  const paidCount = activeStudents.filter((s) => s.feeState === 'paid').length;
 
   const handleExportCSV = () => {
+    if (activeStudents.length === 0) {
+      toast.error('There are no active students to export.');
+      return;
+    }
     const headers = ['Registration No', 'Full Name', 'Class', 'Board', 'Tuition', 'Fee State', 'Amount Due', 'Mobile'];
     const rows = activeStudents.map((s) => [
       s.registrationNumber,
-      `"${s.fullName}"`,
+      s.fullName,
       s.classNumber,
       s.board,
       s.tuitionAfterScholarship,
@@ -55,7 +95,7 @@ export default function AccountantReportsPage() {
       s.mobile,
     ]);
 
-    const csvContent = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+    const csvContent = [headers, ...rows].map((r) => r.map(csvCell).join(',')).join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -64,6 +104,7 @@ export default function AccountantReportsPage() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
     toast.success('CSV ledger exported successfully!');
   };
 
@@ -97,14 +138,16 @@ export default function AccountantReportsPage() {
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <div className="rounded-[12px] border border-gray-200 bg-white p-5 shadow-sm">
-          <p className="text-sm text-[#718096]">Tuition Billed</p>
+          <p className="text-sm text-[#718096]">Monthly Tuition Billed</p>
           <p className="mt-1 text-2xl font-bold text-[#1A2B4A]">{formatINR(billed)}</p>
           <p className="mt-1 text-xs text-[#718096]">{activeCount} active students</p>
         </div>
         <div className="rounded-[12px] border border-gray-200 bg-white p-5 shadow-sm">
           <p className="text-sm text-[#718096]">Collected This Month</p>
           <p className="mt-1 text-2xl font-bold text-[#10B981]">{formatINR(collected)}</p>
-          <p className="mt-1 text-xs text-[#718096]">{paidCount} cleared</p>
+          <p className="mt-1 text-xs text-[#718096]">
+            {stats.receiptsThisMonth} receipt{stats.receiptsThisMonth === 1 ? '' : 's'} · {paidCount} student{paidCount === 1 ? '' : 's'} cleared
+          </p>
         </div>
         <div className="rounded-[12px] border border-gray-200 bg-white p-5 shadow-sm">
           <p className="text-sm text-[#718096]">Outstanding Dues</p>
@@ -113,7 +156,7 @@ export default function AccountantReportsPage() {
         </div>
       </div>
 
-      <SectionCard title="Collection Progress" description={`${collectionRate}% of billed tuition collected for ${currentPeriod}`}>
+      <SectionCard title="Collection Progress" description={`${collectionRate}% of expected fees (collected + outstanding) received for ${currentPeriod}`}>
         <div className="space-y-4">
           <div className="h-4 w-full overflow-hidden rounded-full bg-[#EDF2F7]">
             <div
@@ -140,14 +183,23 @@ export default function AccountantReportsPage() {
 
       {/* Class-wise Revenue Breakdown Table */}
       <SectionCard title="Class-Wise Tuition Breakdown" bodyClassName="p-0">
+        {classBreakdown.length === 0 ? (
+          <div className="p-6">
+            <EmptyState
+              icon={BarChart3}
+              title="No active students"
+              message="Class-wise figures will appear once students are enrolled."
+            />
+          </div>
+        ) : (
         <div className="overflow-x-auto">
           <table className="w-full min-w-[620px] text-sm">
             <thead>
               <tr className="border-b border-gray-100 text-left text-xs font-semibold uppercase tracking-wide text-[#718096]">
                 <th className="px-6 py-3">Class</th>
                 <th className="px-6 py-3">Students</th>
-                <th className="px-6 py-3 text-right">Total Billed</th>
-                <th className="px-6 py-3 text-right">Collected</th>
+                <th className="px-6 py-3 text-right">Monthly Tuition</th>
+                <th className="px-6 py-3 text-right">Collected (Month)</th>
                 <th className="px-6 py-3 text-right">Dues Pending</th>
                 <th className="px-6 py-3 text-right">Recovery Rate</th>
               </tr>
@@ -182,6 +234,7 @@ export default function AccountantReportsPage() {
             </tbody>
           </table>
         </div>
+        )}
       </SectionCard>
     </div>
   );

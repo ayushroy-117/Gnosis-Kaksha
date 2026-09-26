@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   Search,
   BookOpen,
@@ -12,22 +13,18 @@ import {
   GraduationCap,
   Sparkles,
   ArrowRight,
-  Printer,
   X,
-  CheckCircle2,
-  Calendar,
   Share2,
 } from 'lucide-react';
-import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import {
-  getAllStudyMaterials,
-  StudyMaterial,
-  MaterialCategory,
-} from '@/lib/study-materials';
+import type { StudyMaterial, MaterialCategory } from '@/lib/study-materials';
+import { useApi } from '@/hooks/useApi';
+import { useAuth } from '@/hooks/useAuth';
+import { formatDate } from '@/lib/format';
+import { LoadingState, ErrorState } from '@/components/dashboard/PageState';
 import toast from 'react-hot-toast';
 
-const CLASSES = ['All', 9, 10, 11, 12];
+const CLASSES: (number | 'All')[] = ['All', 9, 10, 11, 12];
 const CATEGORIES: ('All' | MaterialCategory)[] = [
   'All',
   'Notes',
@@ -36,11 +33,15 @@ const CATEGORIES: ('All' | MaterialCategory)[] = [
   'Worksheet',
   'Syllabus',
 ];
-const SUBJECTS = ['All', 'Mathematics', 'Science', 'Physics', 'Chemistry', 'Biology', 'English'];
 
 export default function StudyMaterialPage() {
-  const [materials, setMaterials] = useState<StudyMaterial[]>(() =>
-    getAllStudyMaterials()
+  const router = useRouter();
+  const { user, loading: authLoading } = useAuth();
+  const { data, error, loading, reload, setData } = useApi<{ materials: StudyMaterial[] }>('/api/study-material');
+  const materials = useMemo(() => data?.materials ?? [], [data]);
+  const subjects = useMemo(
+    () => ['All', ...Array.from(new Set(materials.map((m) => m.subject))).sort()],
+    [materials]
   );
   const [selectedClass, setSelectedClass] = useState<number | 'All'>('All');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
@@ -77,25 +78,21 @@ export default function StudyMaterialPage() {
   }, [materials, selectedClass, selectedCategory, selectedSubject, searchQuery]);
 
   const handleDownload = (item: StudyMaterial) => {
-    // Increment download count locally & via API
-    setMaterials((prev) =>
-      prev.map((m) => (m.id === item.id ? { ...m, downloads: m.downloads + 1 } : m))
+    if (authLoading) {
+      toast('Checking your sign-in, please try again in a moment.');
+      return;
+    }
+    if (!user) {
+      toast.error('Sign in to download');
+      router.push('/auth?next=/study-material');
+      return;
+    }
+    setData((prev) =>
+      prev
+        ? { materials: prev.materials.map((m) => (m.id === item.id ? { ...m, downloads: m.downloads + 1 } : m)) }
+        : prev
     );
-    fetch(`/api/study-material?download=${item.id}`).catch(() => {});
-
-    // Create a dummy PDF blob download
-    const dummyContent = `%PDF-1.4\n1 0 obj\n<< /Title (${item.title}) /Author (${item.uploadedBy}) >>\nendobj\n%%EOF`;
-    const blob = new Blob([dummyContent], { type: 'application/pdf' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${item.title.toLowerCase().replace(/[^a-z0-9]/g, '-')}.pdf`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-
-    toast.success(`Downloading: ${item.title}`);
+    window.location.assign(item.fileUrl);
   };
 
   const handleShare = (item: StudyMaterial) => {
@@ -104,8 +101,10 @@ export default function StudyMaterialPage() {
     if (navigator.share) {
       navigator.share({ title: item.title, text, url: shareUrl }).catch(() => {});
     } else {
-      navigator.clipboard.writeText(`${text}\n${shareUrl}`);
-      toast.success('Link copied to clipboard!');
+      navigator.clipboard
+        .writeText(`${text}\n${shareUrl}`)
+        .then(() => toast.success('Link copied to clipboard!'))
+        .catch(() => toast.error('Could not copy the link.'));
     }
   };
 
@@ -163,7 +162,7 @@ export default function StudyMaterialPage() {
             <button
               key={cls}
               type="button"
-              onClick={() => setSelectedClass(cls as any)}
+              onClick={() => setSelectedClass(cls)}
               className={`rounded-full px-4 py-1.5 text-xs font-semibold transition ${
                 selectedClass === cls
                   ? 'bg-[#1295D8] text-white shadow-xs'
@@ -206,7 +205,7 @@ export default function StudyMaterialPage() {
               onChange={(e) => setSelectedSubject(e.target.value)}
               className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-xs focus:border-[#1295D8] focus:outline-none"
             >
-              {SUBJECTS.map((sub) => (
+              {subjects.map((sub) => (
                 <option key={sub} value={sub}>
                   {sub}
                 </option>
@@ -238,7 +237,21 @@ export default function StudyMaterialPage() {
         </div>
 
         {/* Materials Grid */}
-        {filtered.length === 0 ? (
+        {loading && !data ? (
+          <LoadingState label="Loading study material…" />
+        ) : error ? (
+          <ErrorState message={error.message} onRetry={reload} />
+        ) : materials.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-gray-300 bg-white p-12 text-center">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 text-gray-400">
+              <BookOpen size={24} />
+            </div>
+            <h3 className="mt-4 text-base font-bold text-[#1A2B4A]">No study material published yet</h3>
+            <p className="mt-1 text-sm text-gray-500">
+              Our faculty will publish notes and papers here soon. Please check back later.
+            </p>
+          </div>
+        ) : filtered.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-gray-300 bg-white p-12 text-center">
             <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 text-gray-400">
               <BookOpen size={24} />
@@ -310,7 +323,7 @@ export default function StudyMaterialPage() {
                       onClick={() => handleDownload(item)}
                       className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#1295D8] hover:bg-[#2E5EAA] px-3 py-2 text-xs font-semibold text-white shadow-xs transition"
                     >
-                      <Download size={14} /> Download PDF
+                      <Download size={14} /> Download {item.fileType}
                     </button>
                     <button
                       type="button"
@@ -385,7 +398,7 @@ export default function StudyMaterialPage() {
                   <span>Author: <b>{previewMaterial.uploadedBy}</b></span>
                   <span>Size: <b>{previewMaterial.fileSize}</b></span>
                   <span>Format: <b>{previewMaterial.fileType}</b></span>
-                  <span>Date: <b>{previewMaterial.createdAt}</b></span>
+                  <span>Date: <b>{formatDate(previewMaterial.createdAt)}</b></span>
                 </div>
               </div>
 
@@ -395,10 +408,10 @@ export default function StudyMaterialPage() {
                   <FileText size={28} />
                 </div>
                 <h4 className="text-base font-bold text-[#1A2B4A]">
-                  PDF Ready for Offline Reading
+                  {previewMaterial.fileType} Ready for Offline Reading
                 </h4>
                 <p className="text-xs text-gray-500 mt-1 max-w-md mx-auto">
-                  This study material is verified by Gnosis Kaksha academic faculty. Click Download below to save the full PDF to your device.
+                  This study material is verified by Gnosis Kaksha academic faculty. Sign in and click Download below to save the file to your device.
                 </p>
               </div>
             </div>
@@ -425,7 +438,7 @@ export default function StudyMaterialPage() {
                   }}
                   className="flex items-center gap-1.5"
                 >
-                  <Download size={15} /> Download PDF ({previewMaterial.fileSize})
+                  <Download size={15} /> {user ? 'Download' : 'Sign in to download'} ({previewMaterial.fileSize})
                 </Button>
               </div>
             </div>

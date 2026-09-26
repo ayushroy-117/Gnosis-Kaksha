@@ -1,13 +1,62 @@
-import { BookOpen, GraduationCap, FileText } from 'lucide-react';
+'use client';
+
+import Link from 'next/link';
+import { BookOpen, GraduationCap, FileText, Hourglass, XCircle, ArrowRight } from 'lucide-react';
 import { SectionCard } from '@/components/dashboard/SectionCard';
 import { EmptyState } from '@/components/dashboard/EmptyState';
-import { getStudentData, formatINR } from '@/lib/student-data';
-
-export const metadata = { title: 'My Courses - Gnosis Kaksha' };
+import { LoadingState, ErrorState } from '@/components/dashboard/PageState';
+import { formatINR } from '@/lib/student-data';
+import { useStudentPortal } from '@/hooks/useStudentPortal';
 
 export default function StudentCoursesPage() {
-  const { subjects, profile } = getStudentData();
+  const { data, error, loading, reload, withAs } = useStudentPortal();
+
+  if (loading && !data) return <LoadingState label="Loading courses…" />;
+  if (error) return <ErrorState message={error.message} onRetry={reload} />;
+  if (!data) return null;
+
+  const { subjects, profile } = data;
   const totalMonthly = subjects.reduce((sum, s) => sum + s.monthlyFee, 0);
+
+  if (profile.enrollmentStatus !== 'active') {
+    const pending = profile.enrollmentStatus === 'pending';
+    return (
+      <div className="space-y-6">
+        <h1 className="text-3xl font-bold text-[#1A2B4A]">My Courses</h1>
+        <div
+          className={`flex flex-col gap-4 rounded-[12px] border p-6 sm:flex-row sm:items-start ${
+            pending ? 'border-amber-200 bg-amber-50' : 'border-red-200 bg-red-50'
+          }`}
+        >
+          <div
+            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${
+              pending ? 'bg-amber-100 text-amber-600' : 'bg-red-100 text-red-600'
+            }`}
+          >
+            {pending ? <Hourglass size={22} /> : <XCircle size={22} />}
+          </div>
+          <div className="flex-1">
+            <h2 className="text-lg font-semibold text-[#1A2B4A]">
+              {pending ? 'Admission under review' : 'Application not approved'}
+            </h2>
+            <p className="mt-1 text-sm text-[#4A5568]">
+              {pending
+                ? 'Your admission payment is awaiting verification by the office. Your courses will unlock once it is approved.'
+                : 'Your admission application was not approved. Please contact the institute office for details.'}
+            </p>
+            {pending && (
+              <Link
+                href={withAs('/student/fees')}
+                className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-[#1295D8] hover:underline"
+              >
+                View payment status <ArrowRight size={15} />
+              </Link>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -48,10 +97,13 @@ export default function StudentCoursesPage() {
                   <GraduationCap size={15} />
                   {s.teacher}
                 </p>
-                <div className="mt-4 flex items-center gap-2 border-t border-gray-100 pt-4 text-sm text-[#718096]">
+                <Link
+                  href={withAs(`/student/study-material?subject=${encodeURIComponent(s.name)}`)}
+                  className="mt-4 flex items-center gap-2 border-t border-gray-100 pt-4 text-sm font-medium text-[#1295D8] hover:underline"
+                >
                   <FileText size={15} />
-                  Materials coming soon
-                </div>
+                  Study material
+                </Link>
               </div>
             ))}
           </div>

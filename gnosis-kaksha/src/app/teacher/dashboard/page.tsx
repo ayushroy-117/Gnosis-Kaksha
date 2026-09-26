@@ -1,17 +1,23 @@
+'use client';
+
 import Link from 'next/link';
 import { Users, BookOpen, ArrowRight, ClipboardCheck } from 'lucide-react';
 import { StatCard } from '@/components/dashboard/StatCard';
 import { SectionCard } from '@/components/dashboard/SectionCard';
 import { Badge } from '@/components/dashboard/Badge';
 import { EmptyState } from '@/components/dashboard/EmptyState';
-import { getAllStudents, getAllocationRequests } from '@/lib/institute-store';
-import { classLabel } from '@/lib/institute-data';
-
-export const metadata = { title: 'Teacher Overview - Gnosis Kaksha' };
+import { LoadingState, ErrorState } from '@/components/dashboard/PageState';
+import { useApi } from '@/hooks/useApi';
+import { classLabel, formatDate, type TeacherData } from '@/lib/institute-data';
 
 export default function TeacherDashboardPage() {
-  const students = getAllStudents().filter((s) => s.status === 'active');
-  const allocations = getAllocationRequests();
+  const { data, error, loading, reload } = useApi<TeacherData>('/api/data/teacher');
+
+  if (loading && !data) return <LoadingState label="Loading overview…" />;
+  if (error || !data) return <ErrorState message={error?.message ?? 'Could not load data.'} onRetry={reload} />;
+
+  const students = data.roster.filter((s) => s.status === 'active');
+  const allocations = data.allocations;
   const pending = allocations.filter((a) => a.status === 'PENDING');
   const approved = allocations.filter((a) => a.status === 'APPROVED');
 
@@ -78,7 +84,7 @@ export default function TeacherDashboardPage() {
                       {a.studentName} — {a.subject}
                     </p>
                     <p className="text-xs text-[#718096]">
-                      {a.registrationNumber} · Class {a.classNumber} · {a.createdAt}
+                      {a.registrationNumber} · Class {a.classNumber} · {formatDate(a.createdAt)}
                     </p>
                   </div>
                   {a.status === 'PENDING' && <Badge tone="amber">Pending</Badge>}
@@ -103,6 +109,15 @@ export default function TeacherDashboardPage() {
             </Link>
           }
         >
+          {students.length === 0 ? (
+            <div className="p-6">
+              <EmptyState
+                icon={Users}
+                title="No active students"
+                message="Enrolled students will appear here once admissions are approved."
+              />
+            </div>
+          ) : (
           <ul className="divide-y divide-gray-100">
             {students.slice(0, 5).map((s) => (
               <li key={s.id} className="flex items-center gap-3 px-6 py-4">
@@ -117,6 +132,7 @@ export default function TeacherDashboardPage() {
               </li>
             ))}
           </ul>
+          )}
         </SectionCard>
       </div>
     </div>

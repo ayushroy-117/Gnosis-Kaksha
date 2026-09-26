@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { OFFICE_PHONE_DISPLAY } from '@/lib/institute-contact';
 import Image from 'next/image';
 import { Printer, X, MessageSquare, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
@@ -9,12 +10,25 @@ import { QRCodeSVG } from 'qrcode.react';
 
 export interface FeeReceiptData {
   id: string;
+  /** Official receipt number (issued on verification). Falls back to `id` for display. */
+  receiptNumber?: string | null;
   date: string;
   description: string;
   amount: number;
   method: string;
   utr?: string;
+  /** 'verified' / 'paid' (or omitted) = cleared; anything else is shown as not yet verified. */
   status?: string;
+}
+
+/** Receipt number to show: the official one if issued, else the internal reference. */
+function receiptNo(receipt: FeeReceiptData): string {
+  return receipt.receiptNumber || receipt.id;
+}
+
+/** Omitted status is treated as verified for backward compatibility. */
+export function isReceiptVerified(receipt: FeeReceiptData): boolean {
+  return !receipt.status || receipt.status === 'verified' || receipt.status === 'paid';
 }
 
 export interface FeeReceiptStudent {
@@ -138,12 +152,14 @@ export function ReceiptSheet({
 }: ReceiptSheetProps) {
   const items = React.useMemo(() => buildItems(receipt), [receipt]);
   const inWords = React.useMemo(() => numberToWordsINR(receipt.amount), [receipt.amount]);
+  const verified = isReceiptVerified(receipt);
+  const number = receiptNo(receipt);
 
   const classLabel = [
     student.classNumber ? `Class ${student.classNumber}` : null,
     student.stream,
     student.board,
-  ].filter(Boolean).join(' · ') || 'Class 10';
+  ].filter(Boolean).join(' · ') || '—';
 
   return (
     <div className="receipt-single-page bg-white text-black p-5 sm:p-6 border-2 border-black rounded-none relative overflow-hidden text-xs max-w-[780px] mx-auto select-text font-serif">
@@ -177,7 +193,7 @@ export function ReceiptSheet({
                   “A PLACE FOR EXCELLENCE”
                 </p>
                 <p className="text-[9px] text-gray-700 mt-0.5 leading-tight font-sans">
-                  Main Road, Ramkrishna Nagar, Cachar, Assam – 788713 &nbsp;|&nbsp; Ph: +91 94350 12345
+                  Main Road, Ramkrishna Nagar, Cachar, Assam – 788713 &nbsp;|&nbsp; Ph: {OFFICE_PHONE_DISPLAY}
                 </p>
                 <p className="text-[9px] text-gray-600 leading-tight font-sans">
                   Email: query@gnosiskaksha.in &nbsp;|&nbsp; Web: www.gnosiskaksha.cloud
@@ -196,9 +212,11 @@ export function ReceiptSheet({
 
         {/* ── 2. Receipt Title Banner ── */}
         <div className="bg-[#1A2B4A] text-white px-3 py-1.5 rounded-none flex items-center justify-between text-xs font-bold font-sans">
-          <span className="tracking-wider uppercase text-[10px]">OFFICIAL MONEY &amp; FEE RECEIPT</span>
+          <span className="tracking-wider uppercase text-[10px]">
+            {verified ? <>OFFICIAL MONEY &amp; FEE RECEIPT</> : <>PAYMENT ACKNOWLEDGEMENT · NOT A RECEIPT</>}
+          </span>
           <div className="flex items-center gap-4 text-[10px]">
-            <span>Receipt No: <strong className="font-mono text-amber-300">{receipt.id}</strong></span>
+            <span>{verified ? 'Receipt No' : 'Ref'}: <strong className="font-mono text-amber-300">{number}</strong></span>
             <span>Date: <strong className="text-white">{formatDate(receipt.date)}</strong></span>
           </div>
         </div>
@@ -291,7 +309,7 @@ export function ReceiptSheet({
           <tfoot>
             <tr className="bg-gray-100 border-t-2 border-black font-sans font-bold text-black">
               <td colSpan={3} className="py-2 px-3 text-right text-[11px] uppercase tracking-wide">
-                Total Amount Received:
+                {verified ? 'Total Amount Received:' : 'Total Amount Submitted:'}
               </td>
               <td className="py-2 px-3 text-right font-mono font-black text-sm text-[#1A2B4A]">
                 ₹{receipt.amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
@@ -306,9 +324,15 @@ export function ReceiptSheet({
             <span className="text-gray-600 font-sans font-semibold">Amount in Words: </span>
             <span className="font-bold text-black italic">{inWords}</span>
           </div>
-          <span className="inline-flex items-center gap-1 font-sans font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-300 text-[9px] uppercase">
-            <ShieldCheck size={12} /> Payment Verified
-          </span>
+          {verified ? (
+            <span className="inline-flex items-center gap-1 font-sans font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-300 text-[9px] uppercase">
+              <ShieldCheck size={12} /> Payment Verified
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 font-sans font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-300 text-[9px] uppercase">
+              Not Verified{receipt.status ? ` · ${receipt.status}` : ''}
+            </span>
+          )}
         </div>
 
         {/* ── 6. Student Portal Login Credentials (If Provided) ── */}
@@ -333,7 +357,7 @@ export function ReceiptSheet({
           <div className="flex items-center gap-2.5">
             <div className="border border-gray-300 p-1 bg-white shrink-0">
               <QRCodeSVG
-                value={`https://gnosiskaksha.cloud/verify/receipt/${receipt.id}`}
+                value={`https://gnosiskaksha.cloud/verify/receipt/${number}`}
                 size={48}
                 level="M"
                 fgColor="#1A2B4A"
@@ -404,13 +428,14 @@ export function OfficialFeeReceiptModal({
   copyType?: 'STUDENT COPY' | 'OFFICE COPY' | 'ORIGINAL RECEIPT';
 }) {
   const inWords = React.useMemo(() => numberToWordsINR(receipt.amount), [receipt.amount]);
+  const verified = isReceiptVerified(receipt);
 
   const whatsappMessage =
     `*Official Fee Receipt — Gnosis Kaksha*\n` +
-    `Receipt No: ${receipt.id}\n` +
+    `Receipt No: ${receiptNo(receipt)}\n` +
     `Date: ${formatDate(receipt.date)}\n` +
     `Student: ${student.fullName} (${student.registrationNumber})\n` +
-    `Class: Class ${student.classNumber || '10'}${student.stream ? ` (${student.stream})` : ''}\n` +
+    `Class: ${student.classNumber ? `Class ${student.classNumber}` : '—'}${student.stream ? ` (${student.stream})` : ''}\n` +
     `Amount Paid: ₹${receipt.amount.toLocaleString('en-IN')} (${inWords})\n` +
     `Payment Mode: ${receipt.method}${receipt.utr ? ` (UTR: ${receipt.utr})` : ''}\n` +
     `Status: VERIFIED & CLEARED\n` +
@@ -438,6 +463,13 @@ export function OfficialFeeReceiptModal({
             Close
           </Button>
 
+          {!verified && (
+            <p className="mr-auto text-xs font-medium text-amber-700">
+              This payment is not verified yet — an official receipt can be printed once it is verified.
+            </p>
+          )}
+
+          {verified && (
           <a
             href={`https://wa.me/?text=${encodeURIComponent(whatsappMessage)}`}
             target="_blank"
@@ -446,7 +478,9 @@ export function OfficialFeeReceiptModal({
           >
             <MessageSquare size={14} /> WhatsApp
           </a>
+          )}
 
+          {verified && (
           <button
             type="button"
             onClick={() => window.print()}
@@ -454,6 +488,7 @@ export function OfficialFeeReceiptModal({
           >
             <Printer size={15} /> Print / Save PDF
           </button>
+          )}
         </div>
       </div>
     </div>

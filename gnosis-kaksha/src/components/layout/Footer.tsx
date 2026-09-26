@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Mail, Phone, MapPin, Heart, Send, Clock } from 'lucide-react';
+import { Mail, Phone, MapPin, Heart, Clock } from 'lucide-react';
 
 // Proper SVG icons for each social platform
 const FacebookIcon = () => (
@@ -145,7 +145,7 @@ export function Footer() {
               </li>
               <li className="flex items-center gap-3 text-sm text-gray-400">
                 <Mail className="h-4 w-4 text-[#50B4F2] flex-shrink-0" />
-                <span>query.gnosiskaksha.in</span>
+                <a href="mailto:query@gnosiskaksha.in" className="hover:text-white transition">query@gnosiskaksha.in</a>
               </li>
               <li className="flex items-center gap-3 text-sm text-gray-400">
                 <Clock className="h-4 w-4 text-[#50B4F2] flex-shrink-0" />

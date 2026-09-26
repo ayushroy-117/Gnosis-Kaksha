@@ -61,8 +61,8 @@ export default function BgRemoverPage() {
 
       const blob = await res.blob();
       setResult(URL.createObjectURL(blob));
-    } catch (err: any) {
-      setError(err.message || 'Background removal failed. Please try again.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Background removal failed. Please try again.');
     } finally {
       setLoading(false);
     }

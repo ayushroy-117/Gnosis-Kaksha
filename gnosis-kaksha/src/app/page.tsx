@@ -7,7 +7,9 @@ import { BookOpen, Users, Award, Globe, Play, ChevronRight, Star, Zap, Mail, Pho
 import { useState, useEffect } from 'react';
 
 export default function Home() {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- shapes mapped from /api/teachers and /api/gallery below
   const [teachers, setTeachers] = useState<any[]>([]);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [gallery, setGallery] = useState<any[]>([]);
   const [contactForm, setContactForm] = useState({ name: '', email: '', phone: '', message: '' });
   const [contactLoading, setContactLoading] = useState(false);
@@ -20,7 +22,7 @@ export default function Home() {
       .then((data) => {
         if (data.teachers && data.teachers.length > 0) {
           setTeachers(
-            data.teachers.map((t: any) => ({
+            data.teachers.map((t: Record<string, unknown>) => ({
               id: t.id,
               name: t.name,
               subject: t.role,
@@ -53,7 +55,7 @@ export default function Home() {
       .then((data) => {
         if (data.images && data.images.length > 0) {
           setGallery(
-            data.images.map((img: any) => ({
+            data.images.map((img: Record<string, unknown>) => ({
               id: img.id,
               image: img.image_url,
               caption: img.title || img.caption,
@@ -95,10 +97,10 @@ export default function Home() {
         message: 'Thank you! Your message has been sent successfully.',
       });
       setContactForm({ name: '', email: '', phone: '', message: '' });
-    } catch (err: any) {
+    } catch (err) {
       setContactStatus({
         type: 'error',
-        message: err.message || 'Unable to send your message. Please try again.',
+        message: err instanceof Error && err.message ? err.message : 'Unable to send your message. Please try again.',
       });
     } finally {
       setContactLoading(false);
@@ -225,7 +227,7 @@ export default function Home() {
                 With a focus on personalized learning and expert instruction, we help students excel academically and develop critical thinking skills.
               </p>
               <blockquote className="border-l-4 border-gradient-to-b from-[#1295D8] to-orange-400 pl-6 italic text-[#4A5568] text-lg font-semibold">
-                "Education is the most powerful tool which you can use to change the world."
+                &ldquo;Education is the most powerful tool which you can use to change the world.&rdquo;
               </blockquote>
             </div>
             <div className="relative">

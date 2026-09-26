@@ -1,27 +1,24 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import Image from 'next/image';
 import {
   User,
   Printer,
   ShieldCheck,
-  Phone,
   MapPin,
   Calendar,
   RotateCw,
   Scissors,
-  CheckCircle2,
-  AlertCircle,
   Sparkles,
   Info,
-  Building2,
 } from 'lucide-react';
 import { SectionCard } from '@/components/dashboard/SectionCard';
 import { Badge } from '@/components/dashboard/Badge';
 import { Button } from '@/components/ui/Button';
-import { getStudentData, formatDate } from '@/lib/student-data';
-import { useAuth } from '@/hooks/useAuth';
+import { formatDate } from '@/lib/student-data';
+import { useStudentPortal } from '@/hooks/useStudentPortal';
+import { LoadingState, ErrorState } from '@/components/dashboard/PageState';
 import { QRCodeSVG } from 'qrcode.react';
 
 /* ─── Field component for Profile Section ─── */
@@ -109,18 +106,18 @@ const RULES = [
 ];
 
 export default function StudentProfilePage() {
-  const { user } = useAuth();
+  const { data, error, loading, reload } = useStudentPortal();
   const [activeTab, setActiveTab] = useState<'both' | 'front' | 'back'>('both');
   const [isFlipped, setIsFlipped] = useState(false);
-
-  const { profile } = useMemo(() => {
-    const identifier = user?.registrationNumber || user?.email || user?.id;
-    return getStudentData(identifier);
-  }, [user]);
 
   const handlePrint = () => {
     window.print();
   };
+
+  if (loading && !data) return <LoadingState label="Loading profile…" />;
+  if (error) return <ErrorState message={error.message} onRetry={reload} />;
+  if (!data) return null;
+  const { profile } = data;
 
   return (
     <div className="space-y-8">
@@ -366,7 +363,7 @@ export default function StudentProfilePage() {
                           Father&apos;s / Guardian Name
                         </p>
                         <p className="text-[10px] font-semibold text-slate-800 leading-tight truncate mt-0.5">
-                          {profile.parentName || 'Guardian'}
+                          {profile.parentName || '—'}
                         </p>
                       </div>
 
@@ -384,7 +381,7 @@ export default function StudentProfilePage() {
                           Permanent Address
                         </p>
                         <p className="text-[9px] font-medium text-slate-600 leading-tight line-clamp-2 mt-0.5">
-                          {profile.address || 'Ramkrishna Nagar, Assam'}
+                          {profile.address || '—'}
                         </p>
                       </div>
                     </div>
@@ -447,7 +444,7 @@ export default function StudentProfilePage() {
               {/* ── Bottom Strip ── */}
               <div className="relative z-10 bg-[#0F172A] px-3 py-1 flex items-center justify-between text-[7.5px] text-slate-300">
                 <span>web: gnosiskaksha.cloud</span>
-                <span>helpline: +91 98765 43210</span>
+                <span>helpline: +91 84740 20124</span>
               </div>
             </div>
           )}
@@ -500,7 +497,7 @@ export default function StudentProfilePage() {
                   Gnosis Kaksha, Main Road, Ramkrishna Nagar, Karimganj, Assam – 788713
                 </p>
                 <p className="text-[7px] text-amber-700 leading-tight mt-0.5 font-mono">
-                  Phone: +91 98765 43210 • Email: contact@gnosiskaksha.cloud
+                  Phone: +91 84740 20124 • Email: query@gnosiskaksha.in
                 </p>
               </div>
 

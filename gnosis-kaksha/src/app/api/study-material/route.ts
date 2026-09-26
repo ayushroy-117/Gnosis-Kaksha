@@ -98,7 +98,10 @@ export async function POST(req: NextRequest) {
   if (file.size > MAX_BYTES) {
     return NextResponse.json({ success: false, error: 'File is larger than 10 MB.' }, { status: 413 });
   }
-  const fileType = ALLOWED[file.type];
+  // Browsers sometimes report DOCX/ZIP with an empty or generic MIME type; fall back to the extension.
+  const ext = file.name.split('.').pop()?.toLowerCase();
+  const byExt: Record<string, StudyMaterial['fileType']> = { pdf: 'PDF', docx: 'DOCX', zip: 'ZIP' };
+  const fileType = ALLOWED[file.type] ?? (ext && (!file.type || file.type === 'application/octet-stream') ? byExt[ext] : undefined);
   if (!fileType) {
     return NextResponse.json({ success: false, error: 'Only PDF, DOCX or ZIP files can be uploaded.' }, { status: 415 });
   }

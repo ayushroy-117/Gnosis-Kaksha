@@ -1,3 +1,5 @@
+import { UPI_ID } from '@/lib/upi';
+import { OFFICE_PHONE_DISPLAY } from '@/lib/institute-contact';
 /**
  * lib/whatsapp.ts
  * WhatsApp integration for Gnosis Kaksha fee reminders and student alerts.
@@ -58,10 +60,10 @@ export function generateFeeReminderMessage(data: FeeReminderData): string {
   const currentMonth =
     data.period ||
     new Date().toLocaleString('en-IN', { month: 'long', year: 'numeric' });
-  const upi = data.upiId || 'gnosiskaksha@upi';
+  const upi = data.upiId || UPI_ID;
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
   const link = data.portalUrl || `${siteUrl}/student/fees`;
-  const contact = data.institutePhone || '+91 94350 12345';
+  const contact = data.institutePhone || OFFICE_PHONE_DISPLAY;
   const greeting = data.parentName ? `Dear ${data.parentName},` : 'Dear Student / Parent,';
 
   return (

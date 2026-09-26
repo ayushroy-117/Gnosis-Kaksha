@@ -70,3 +70,14 @@ alter table public.allocation_requests
 grant all on all tables in schema public to service_role;
 grant execute on all functions in schema public to service_role;
 grant usage, select on all sequences in schema public to service_role;
+
+-- Registration numbers come from student_reg_seq. After a dump/restore the
+-- sequence can lag behind existing rows (new admissions then collide), so
+-- fast-forward it past the highest number in use. Never moves it backwards.
+select setval(
+  'public.student_reg_seq',
+  greatest(
+    (select coalesce(max((regexp_match(registration_number, '(\d+)$'))[1]::int), 199) from public.students),
+    (select last_value from public.student_reg_seq)
+  )
+);

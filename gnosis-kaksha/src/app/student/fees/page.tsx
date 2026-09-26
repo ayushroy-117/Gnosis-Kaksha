@@ -8,29 +8,29 @@ import {
   Clock,
   Copy,
   ExternalLink,
-  Printer,
   X,
   CreditCard,
   ShieldCheck,
   MessageSquare,
   AlertCircle,
-  RefreshCw,
   Hourglass,
 } from 'lucide-react';
 import { SectionCard } from '@/components/dashboard/SectionCard';
 import { Badge } from '@/components/dashboard/Badge';
+import { EmptyState } from '@/components/dashboard/EmptyState';
+import { LoadingState, ErrorState } from '@/components/dashboard/PageState';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { getStudentData, formatINR, formatDate, FeePayment } from '@/lib/student-data';
-import { useAuth } from '@/hooks/useAuth';
+import { formatINR, formatDate, type FeePayment } from '@/lib/student-data';
+import { useStudentPortal } from '@/hooks/useStudentPortal';
+import { apiFetch } from '@/hooks/useApi';
+import { UPI_ID, upiPayUrl, normalizeUtr, UTR_PATTERN } from '@/lib/upi';
+import { OFFICE_PHONE_E164 } from '@/lib/institute-contact';
 import { QRCodeSVG } from 'qrcode.react';
 import { OfficialFeeReceiptModal } from '@/components/dashboard/OfficialFeeReceiptModal';
 import toast from 'react-hot-toast';
 
-const UPI_ID = 'gnosiskaksha@upi';
-const INSTITUTION_NAME = 'Gnosis+Kaksha';
-
-/** Generate a unique UPI payment reference for this session's transaction */
+/** Unique reference embedded in the QR (tr=) so the office can match payments. */
 function generateUpiReference(registrationNumber: string): string {
   const ts = Date.now().toString(36).toUpperCase();
   const reg = registrationNumber.replace(/[^A-Z0-9]/g, '').slice(-6);
@@ -38,107 +38,64 @@ function generateUpiReference(registrationNumber: string): string {
 }
 
 export default function StudentFeesPage() {
-  const { user } = useAuth();
-  const initialData = useMemo(() => {
-    const identifier = user?.registrationNumber || user?.email || user?.id;
-    return getStudentData(identifier);
-  }, [user]);
-
-  const [studentData, setStudentData] = useState(initialData);
+  const { data, error, loading, reload, viewingAs } = useStudentPortal();
   const [payModalOpen, setPayModalOpen] = useState(false);
   const [activeReceipt, setActiveReceipt] = useState<FeePayment | null>(null);
   const [utrNumber, setUtrNumber] = useState('');
+  const [utrError, setUtrError] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [upiReference, setUpiReference] = useState('');
 
-  // Stable unique reference for this payment session — regenerates when modal opens
-  const [upiReference] = useState(() =>
-    generateUpiReference(initialData.profile.registrationNumber)
-  );
+  const pendingTxn = useMemo(() => data?.feeStatus.payments.find((p) => p.status === 'pending'), [data]);
+  const lastRejected = useMemo(() => {
+    const latest = data?.feeStatus.payments[0];
+    return latest?.status === 'rejected' ? latest : undefined;
+  }, [data]);
 
-  const { feeStatus, subjects, profile } = studentData;
+  if (loading && !data) return <LoadingState label="Loading your fees…" />;
+  if (error && !data) return <ErrorState message={error.message} onRetry={reload} />;
+  if (!data) return null;
 
+  const { feeStatus, subjects, profile } = data;
+  const isAdmission = profile.enrollmentStatus === 'pending';
   const payableAmount = feeStatus.finalPayable;
   const isCleared = feeStatus.status === 'paid' || payableAmount === 0;
   const isPendingVerification = feeStatus.status === 'pending_verification';
+  const canPay = !viewingAs && !isCleared && !isPendingVerification && profile.enrollmentStatus !== 'rejected';
+  const payLabel = isAdmission ? 'Pay Admission Fee' : 'Pay Monthly Tuition';
 
-  // The pending transaction (so student can see submitted UTR)
-  const pendingTxn = useMemo(
-    () => feeStatus.payments.find((p) => p.status === 'pending'),
-    [feeStatus.payments]
-  );
+  const upiIntentUrl = upiPayUrl({
+    amount: payableAmount,
+    reference: upiReference,
+    note: `${isAdmission ? 'Admission' : 'Tuition'} ${profile.registrationNumber}`,
+  });
 
-  /**
-   * Dynamic UPI deep-link.
-   * - `pa`  = payee UPI ID
-   * - `pn`  = payee name
-   * - `am`  = exact amount (locked in dynamic QR)
-   * - `cu`  = currency
-   * - `tr`  = transaction reference (unique per payment — used for matching)
-   * - `tn`  = transaction note (shows in the payer's app)
-   */
-  const upiIntentUrl = useMemo(() => {
-    return (
-      `upi://pay?pa=${UPI_ID}` +
-      `&pn=${INSTITUTION_NAME}` +
-      `&am=${payableAmount}` +
-      `&cu=INR` +
-      `&tr=${upiReference}` +
-      `&tn=Tuition+${profile.registrationNumber}+${upiReference}`
-    );
-  }, [payableAmount, profile.registrationNumber, upiReference]);
+  const openPayModal = () => {
+    setUpiReference(generateUpiReference(profile.registrationNumber));
+    setUtrNumber('');
+    setUtrError(null);
+    setPayModalOpen(true);
+  };
 
   const handlePaySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!utrNumber || utrNumber.trim().length < 6) {
-      toast.error('Please enter a valid 12-digit UPI Transaction / UTR ID');
+    const utr = normalizeUtr(utrNumber);
+    if (!UTR_PATTERN.test(utr)) {
+      setUtrError('Enter the UPI transaction ID exactly as shown in your payment app (usually 12 digits).');
       return;
     }
-
+    setUtrError(null);
     setIsProcessing(true);
     try {
-      const res = await fetch('/api/student/pay-fee', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          studentId: profile.id,
-          identifier: profile.registrationNumber,
-          amount: payableAmount,
-          utr: utrNumber.trim(),
-          upiReference,
-          method: 'UPI',
-        }),
-      });
-
-      const data = await res.json();
-      if (res.ok && data.success) {
-        toast.success('Payment submitted! Awaiting accountant verification.');
-        setStudentData((prev) => ({
-          ...prev,
-          feeStatus: {
-            ...prev.feeStatus,
-            status: 'pending_verification',
-            payments: [
-              {
-                ...data.receipt,
-                id: data.receipt?.id || `PAY-${Date.now()}`,
-                date: data.receipt?.date || new Date().toISOString().split('T')[0],
-                description: data.receipt?.description || `Monthly Tuition — ${new Date().toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })} (Pending Verification)`,
-                amount: payableAmount,
-                method: 'UPI',
-                status: 'pending',
-                utr: utrNumber.trim(),
-              },
-              ...prev.feeStatus.payments,
-            ],
-          },
-        }));
-        setPayModalOpen(false);
-        setUtrNumber('');
-      } else {
-        toast.error(data.error || 'Payment submission failed');
-      }
-    } catch {
-      toast.error('Failed to submit payment. Please try again.');
+      await apiFetch('/api/student/pay-fee', { method: 'POST', json: { utr, upiReference } });
+      toast.success('Payment submitted! The office will verify it shortly.');
+      setPayModalOpen(false);
+      setUtrNumber('');
+      reload();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to submit payment. Please try again.';
+      setUtrError(message);
+      toast.error(message);
     } finally {
       setIsProcessing(false);
     }
@@ -167,8 +124,12 @@ export default function StudentFeesPage() {
       tone: 'discount' as const,
     },
     { label: 'Tuition after scholarship', value: feeStatus.tuitionAfterScholarship, tone: 'subtotal' as const },
-    { label: 'Examination fee (Annual)', value: feeStatus.examFee, tone: 'default' as const },
-    { label: 'Institute T-shirt (Included at Admission)', value: feeStatus.tshirtFee, tone: 'default' as const },
+    ...(isAdmission
+      ? [
+          { label: 'Examination fee (Annual)', value: feeStatus.examFee, tone: 'default' as const },
+          { label: 'Institute T-shirt (at admission)', value: feeStatus.tshirtFee, tone: 'default' as const },
+        ]
+      : []),
   ];
 
   return (
@@ -197,10 +158,12 @@ export default function StudentFeesPage() {
             <p className="text-3xl font-bold text-[#1A2B4A]">{formatINR(payableAmount)}</p>
             <p className="mt-0.5 text-sm text-[#718096]">
               {isCleared
-                ? 'September 2026 dues cleared'
+                ? `Next due ${formatDate(feeStatus.nextDueDate)}`
                 : isPendingVerification
-                  ? 'Payment submitted — awaiting accountant verification'
-                  : `Due by ${formatDate(feeStatus.nextDueDate)}`}
+                  ? 'Payment submitted — awaiting verification by the office'
+                  : isAdmission
+                    ? 'Admission fee — first month, exam fee & T-shirt'
+                    : `Due by ${formatDate(feeStatus.nextDueDate)}`}
             </p>
           </div>
         </div>
@@ -210,11 +173,11 @@ export default function StudentFeesPage() {
             {isCleared ? 'All Dues Paid' : isPendingVerification ? 'Pending Verification' : 'Payment due'}
           </Badge>
 
-          {!isCleared && !isPendingVerification && (
+          {canPay && (
             <div className="flex flex-wrap items-center gap-2">
               <a
-                href={`https://wa.me/919435012345?text=${encodeURIComponent(
-                  `Hello Accounts Desk, I am ${profile.fullName} (Reg: ${profile.registrationNumber}, Class ${profile.classNumber}). I have a query regarding my pending tuition fee of ₹${payableAmount}.`
+                href={`https://wa.me/${OFFICE_PHONE_E164}?text=${encodeURIComponent(
+                  `Hello Accounts Desk, I am ${profile.fullName} (Reg: ${profile.registrationNumber}, Class ${profile.classNumber}). I have a query regarding my pending fee of ₹${payableAmount}.`
                 )}`}
                 target="_blank"
                 rel="noopener noreferrer"
@@ -224,10 +187,10 @@ export default function StudentFeesPage() {
               </a>
               <button
                 type="button"
-                onClick={() => setPayModalOpen(true)}
+                onClick={openPayModal}
                 className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-[#1295D8] to-[#2E5EAA] px-5 py-2.5 text-sm font-semibold text-white transition hover:shadow-lg active:scale-95"
               >
-                <CreditCard size={16} /> Pay Monthly Tuition
+                <CreditCard size={16} /> {payLabel}
               </button>
             </div>
           )}
@@ -245,11 +208,45 @@ export default function StudentFeesPage() {
 
           {isCleared && (
             <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-green-700 bg-green-50 px-3 py-1.5 rounded-lg border border-green-200">
-              <CheckCircle2 size={15} /> All Cleared for September
+              <CheckCircle2 size={15} /> All dues cleared
             </span>
           )}
         </div>
       </div>
+
+      {/* Admission status */}
+      {isAdmission && (
+        <div className="flex items-start gap-3 rounded-xl border border-[#CDE6F7] bg-[#F0F7FD] px-5 py-4">
+          <ShieldCheck size={18} className="mt-0.5 shrink-0 text-[#1295D8]" />
+          <p className="text-sm text-[#2E5EAA]">
+            <span className="font-semibold">Your admission is not complete yet.</span> Your portal unlocks as soon as the
+            office verifies your admission payment.
+          </p>
+        </div>
+      )}
+      {profile.enrollmentStatus === 'rejected' && (
+        <div role="alert" className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-5 py-4">
+          <AlertCircle size={18} className="mt-0.5 shrink-0 text-red-600" />
+          <p className="text-sm text-red-700">
+            Your application was not approved. Please contact the institute office for details.
+          </p>
+        </div>
+      )}
+
+      {/* Last submission rejected */}
+      {lastRejected && !isPendingVerification && (
+        <div role="alert" className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-5 py-4">
+          <AlertCircle size={18} className="mt-0.5 shrink-0 text-red-600" />
+          <div className="text-sm">
+            <p className="font-semibold text-red-800">Your last payment submission was not accepted</p>
+            <p className="mt-0.5 text-red-700">
+              {lastRejected.rejectedNote ? <>Reason: {lastRejected.rejectedNote}. </> : null}
+              {lastRejected.utr && <>Transaction ID <span className="font-mono">{lastRejected.utr}</span>. </>}
+              {canPay && 'If you did pay, submit the correct transaction ID again.'}
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Pending verification notice bar */}
       {isPendingVerification && (
@@ -262,7 +259,7 @@ export default function StudentFeesPage() {
               {pendingTxn?.utr && (
                 <> Your UTR <span className="font-mono font-bold">{pendingTxn.utr}</span> has been recorded.</>
               )}
-              {' '}You will see your receipt here once approved (usually within 24 hours).
+              {' '}You will see your receipt here once it is approved.
             </p>
           </div>
         </div>
@@ -300,7 +297,7 @@ export default function StudentFeesPage() {
               </div>
             ))}
             <div className="flex items-center justify-between gap-3 bg-[#F7FAFC] px-6 py-4">
-              <dt className="text-base font-bold text-[#1A2B4A]">Total Monthly Due</dt>
+              <dt className="text-base font-bold text-[#1A2B4A]">{isAdmission ? 'Admission Total' : 'Amount Due Now'}</dt>
               <dd className="text-lg font-bold text-[#1295D8]">{formatINR(payableAmount)}</dd>
             </div>
           </dl>
@@ -313,6 +310,11 @@ export default function StudentFeesPage() {
           className="lg:col-span-3"
           bodyClassName="p-0"
         >
+          {feeStatus.payments.length === 0 && (
+            <div className="p-6">
+              <EmptyState icon={Wallet} title="No payments yet" message="Your submitted payments and receipts will appear here." />
+            </div>
+          )}
           <ul className="divide-y divide-gray-100">
             {feeStatus.payments.map((p) => (
               <li key={p.id} className="flex items-center gap-4 px-6 py-4 hover:bg-gray-50 transition">
@@ -337,11 +339,14 @@ export default function StudentFeesPage() {
                   <p className="truncate text-sm font-semibold text-[#1A2B4A]">{p.description}</p>
                   <p className="text-xs text-[#718096]">
                     {formatDate(p.date)} · {p.method} ·{' '}
-                    <span className="font-mono">{p.id}</span>
+                    <span className="font-mono">{p.receiptNumber || p.id}</span>
                     {p.utr && (
                       <> · UTR: <span className="font-mono">{p.utr}</span></>
                     )}
                   </p>
+                  {p.status === 'rejected' && p.rejectedNote && (
+                    <p className="mt-0.5 text-xs text-red-600">Not accepted: {p.rejectedNote}</p>
+                  )}
                 </div>
                 <div className="flex items-center gap-3">
                   <span className="text-sm font-semibold text-[#1A2B4A]">{formatINR(p.amount)}</span>
@@ -358,7 +363,11 @@ export default function StudentFeesPage() {
                     <span className="inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-semibold text-amber-700 border border-amber-200 bg-amber-50">
                       <Clock size={12} /> Verifying
                     </span>
-                  ) : null}
+                  ) : (
+                    <span className="inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-semibold text-red-700 border border-red-200 bg-red-50">
+                      Rejected
+                    </span>
+                  )}
                 </div>
               </li>
             ))}
@@ -369,9 +378,10 @@ export default function StudentFeesPage() {
       {/* ── UPI PAYMENT MODAL ─────────────────────────────────────────────── */}
       {payModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
-          <div className="relative w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl border border-gray-200">
+          <div role="dialog" aria-modal="true" aria-labelledby="pay-title" className="relative w-full max-w-lg max-h-[92vh] overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl border border-gray-200">
             <button
               type="button"
+              aria-label="Close"
               onClick={() => setPayModalOpen(false)}
               className="absolute right-4 top-4 p-1.5 rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition"
             >
@@ -382,7 +392,7 @@ export default function StudentFeesPage() {
               <span className="inline-flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-[#2E5EAA] bg-[#CDE6F7] px-2.5 py-0.5 rounded-full mb-1">
                 Secure UPI Payment
               </span>
-              <h2 className="text-xl font-bold text-[#1A2B4A]">Pay Monthly Tuition</h2>
+              <h2 id="pay-title" className="text-xl font-bold text-[#1A2B4A]">{payLabel}</h2>
               <p className="text-xs text-gray-500">
                 Student: {profile.fullName} ({profile.registrationNumber})
               </p>
@@ -391,9 +401,9 @@ export default function StudentFeesPage() {
             {/* Amount Banner */}
             <div className="rounded-xl bg-[#F0F7FD] border border-[#50B4F2] p-4 text-center mb-4">
               <p className="text-xs text-gray-500 uppercase font-semibold">Amount to Pay</p>
-              <p className="text-3xl font-black text-[#1A2B4A] mt-0.5">₹{payableAmount}</p>
+              <p className="text-3xl font-black text-[#1A2B4A] mt-0.5">{formatINR(payableAmount)}</p>
               <p className="text-[11px] text-gray-600 mt-1">
-                Tuition for Class {profile.classNumber} ({profile.board})
+                {isAdmission ? 'Admission' : 'Tuition'} for Class {profile.classNumber} ({profile.board})
               </p>
             </div>
 
@@ -421,7 +431,7 @@ export default function StudentFeesPage() {
               </div>
               <div className="space-y-2.5 text-xs">
                 <div>
-                  <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500 mb-0.5">Scan to pay ₹{payableAmount} exactly</p>
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500 mb-0.5">Scan to pay {formatINR(payableAmount)} exactly</p>
                   <p className="text-gray-600">Open <strong>GPay / PhonePe / Paytm</strong> and scan — the amount is pre-filled and locked.</p>
                 </div>
                 <div>
@@ -451,7 +461,8 @@ export default function StudentFeesPage() {
 
             {/* UTR form */}
             <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 mb-4 text-xs text-blue-800">
-              <strong>After paying:</strong> Open your UPI app → Transaction History → copy the 12-digit UTR/Reference number and paste it below.
+              <strong>After paying:</strong> open your UPI app → transaction history → copy the UPI transaction ID
+              (usually 12 digits, sometimes called UTR or UPI Ref No.) and paste it below. Pay the exact amount shown.
             </div>
 
             <form onSubmit={handlePaySubmit} className="space-y-4">
@@ -459,7 +470,10 @@ export default function StudentFeesPage() {
                 label="12-Digit UPI Transaction ID / UTR"
                 placeholder="e.g. 481920491823"
                 value={utrNumber}
-                onChange={(e) => setUtrNumber(e.target.value)}
+                onChange={(e) => { setUtrNumber(e.target.value); setUtrError(null); }}
+                error={utrError ?? undefined}
+                inputMode="text"
+                autoComplete="off"
                 required
               />
 
@@ -494,7 +508,7 @@ export default function StudentFeesPage() {
       {/* OFFICIAL PRINTABLE FEE RECEIPT MODAL */}
       {activeReceipt && (
         <OfficialFeeReceiptModal
-          receipt={activeReceipt}
+          receipt={{ ...activeReceipt, id: activeReceipt.receiptNumber || activeReceipt.id, status: 'verified' }}
           student={{
             fullName: profile.fullName,
             registrationNumber: profile.registrationNumber,

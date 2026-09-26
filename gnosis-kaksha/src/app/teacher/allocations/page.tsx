@@ -7,19 +7,16 @@ import { Badge } from '@/components/dashboard/Badge';
 import { EmptyState } from '@/components/dashboard/EmptyState';
 import { Button } from '@/components/ui/Button';
 import { Select } from '@/components/ui/Select';
-import {
-  getAllStudents,
-  getAllocationRequests,
-  createAllocationRequest,
-  type SubjectAllocationRequest,
-} from '@/lib/institute-store';
-import { AVAILABLE_SUBJECTS } from '@/lib/fees';
-import { classLabel } from '@/lib/institute-data';
+import { LoadingState, ErrorState } from '@/components/dashboard/PageState';
+import { useApi, apiFetch } from '@/hooks/useApi';
+import { SUBJECT_FEES } from '@/lib/fees';
+import { classLabel, formatDate, type SubjectAllocationRequest, type TeacherData } from '@/lib/institute-data';
 import toast from 'react-hot-toast';
 
 export default function TeacherAllocationsPage() {
-  const students = getAllStudents().filter((s) => s.status === 'active');
-  const [requests, setRequests] = useState<SubjectAllocationRequest[]>(getAllocationRequests());
+  const { data, error, loading, reload, setData } = useApi<TeacherData>('/api/data/teacher');
+  const students = (data?.roster ?? []).filter((s) => s.status === 'active');
+  const requests = data?.allocations ?? [];
   const [showForm, setShowForm] = useState(false);
   const [selectedStudentId, setSelectedStudentId] = useState('');
   const [selectedSubject, setSelectedSubject] = useState('');
@@ -27,14 +24,11 @@ export default function TeacherAllocationsPage() {
 
   const selectedStudent = students.find((s) => s.id === selectedStudentId);
   const availableSubjects = selectedStudent
-    ? (() => {
-        const key =
-          selectedStudent.stream
-            ? `${selectedStudent.classNumber}-${selectedStudent.stream}`
-            : `${selectedStudent.classNumber}`;
-        const all = AVAILABLE_SUBJECTS[key] || [];
-        return all.filter((sub) => !selectedStudent.subjects.includes(sub));
-      })()
+    ? Object.keys(SUBJECT_FEES[selectedStudent.classNumber] ?? {}).filter(
+        (sub) =>
+          !selectedStudent.subjects.includes(sub) &&
+          !requests.some((r) => r.studentId === selectedStudent.id && r.subject === sub && r.status === 'PENDING'),
+      )
     : [];
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -45,25 +39,24 @@ export default function TeacherAllocationsPage() {
     }
     setIsSubmitting(true);
     try {
-      const newReq = createAllocationRequest({
-        studentId: selectedStudent.id,
-        studentName: selectedStudent.fullName,
-        registrationNumber: selectedStudent.registrationNumber,
-        subject: selectedSubject,
-        classNumber: selectedStudent.classNumber,
-        requestedBy: 'Ankur Kumar Nath', // In real app, get from auth context
+      const { allocation } = await apiFetch<{ allocation: SubjectAllocationRequest }>('/api/allocations', {
+        method: 'POST',
+        json: { studentId: selectedStudent.id, subject: selectedSubject },
       });
-      setRequests((prev) => [newReq, ...prev]);
+      setData((prev) => (prev ? { ...prev, allocations: [allocation, ...prev.allocations] } : prev));
       toast.success(`Allocation request submitted for ${selectedStudent.fullName} — ${selectedSubject}`);
       setShowForm(false);
       setSelectedStudentId('');
       setSelectedSubject('');
-    } catch {
-      toast.error('Failed to create allocation request.');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to create allocation request.');
     } finally {
       setIsSubmitting(false);
     }
   };
+
+  if (loading && !data) return <LoadingState label="Loading allocations…" />;
+  if (error || !data) return <ErrorState message={error?.message ?? 'Could not load allocations.'} onRetry={reload} />;
 
   const pendingRequests = requests.filter((r) => r.status === 'PENDING');
   const resolvedRequests = requests.filter((r) => r.status !== 'PENDING');
@@ -100,7 +93,7 @@ export default function TeacherAllocationsPage() {
                 <div className="min-w-0 flex-1">
                   <p className="font-semibold text-[#1A2B4A]">{r.studentName} — {r.subject}</p>
                   <p className="text-xs text-[#718096]">
-                    {r.registrationNumber} · Class {r.classNumber} · Requested {r.createdAt} by {r.requestedBy}
+                    {r.registrationNumber} · Class {r.classNumber} · Requested {formatDate(r.createdAt)} by {r.requestedBy}
                   </p>
                 </div>
                 <Badge tone="amber">Pending</Badge>
@@ -181,7 +174,7 @@ export default function TeacherAllocationsPage() {
 
               {selectedStudent && availableSubjects.length === 0 && (
                 <p className="text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded-lg p-3">
-                  This student is already enrolled in all available subjects for their class.
+                  This student is already enrolled in (or has a pending request for) every subject offered for their class.
                 </p>
               )}
 
