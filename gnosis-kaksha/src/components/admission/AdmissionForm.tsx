@@ -62,7 +62,6 @@ const step4Schema = z.object({
 
 const step5Schema = z.object({
   documentType: z.string().min(1, 'Document type is required'),
-  documentFile: z.any().optional(),
 });
 
 const step6Schema = z.object({
@@ -555,7 +554,7 @@ export function AdmissionForm() {
               <div className="space-y-6">
                 <div>
                   <h2 className="text-2xl font-bold text-[#1A2B4A]">Document Verification</h2>
-                  <p className="text-sm text-[#718096] mt-1">Upload academic proof or ID document</p>
+                  <p className="text-sm text-[#718096] mt-1">Tell us which document you will show at the office</p>
                 </div>
                 <Select
                   label="Document Type"
@@ -567,18 +566,10 @@ export function AdmissionForm() {
                   {...form.register('documentType')}
                   error={errors.documentType?.message}
                 />
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Select Document File (PDF or Image)
-                  </label>
-                  <input
-                    type="file"
-                    accept=".pdf,.jpg,.jpeg,.png"
-                    {...form.register('documentFile')}
-                    className="w-full px-4 py-3 border-2 border-dashed border-gray-300 rounded-xl focus:border-[#1295D8] transition bg-gray-50"
-                  />
-                  <p className="text-xs text-gray-500 mt-1.5">You can also submit physical photocopies at the institute counter.</p>
-                </div>
+                <p className="rounded-lg border border-[#CDE6F7] bg-[#F0F7FD] p-3 text-sm text-[#2E5EAA]">
+                  Bring the original of this document (and a photocopy) to the institute office. It is checked there
+                  before your admission is finalised — no upload needed.
+                </p>
               </div>
             )}
 

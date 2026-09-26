@@ -12,8 +12,6 @@ export default defineConfig({
     baseURL: 'http://localhost:3000',
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
-    // localStorage-based auth — no cookies needed
-    storageState: undefined,
   },
 
   projects: [

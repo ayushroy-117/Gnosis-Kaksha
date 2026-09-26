@@ -1,59 +1,44 @@
 /**
- * e2e/helpers/auth.ts
- * Shared auth helpers — uses the app's mock auth (localStorage-based)
- * to simulate logins for each role without needing real Supabase.
+ * e2e/helpers/auth.ts — real sign-in through the login form.
+ *
+ * Staff credentials come from the environment so no secrets live in the repo:
+ *   E2E_ADMIN_EMAIL / E2E_ADMIN_PASSWORD
+ *   E2E_ACCOUNTANT_EMAIL / E2E_ACCOUNTANT_PASSWORD
+ *   E2E_TEACHER_EMAIL / E2E_TEACHER_PASSWORD
+ * Specs that need a missing account are skipped.
  */
-import { Page } from '@playwright/test';
+import { expect, Page, test } from '@playwright/test';
 
-export type Role = 'student' | 'admin' | 'accountant' | 'teacher';
+export type StaffRole = 'admin' | 'accountant' | 'teacher';
 
-const DEMO_EMAILS: Record<Role, string> = {
-  student:    'student@gnosiskaksha.in',
-  admin:      'admin@gnosiskaksha.in',
-  accountant: 'accountant@gnosiskaksha.in',
-  teacher:    'teacher@gnosiskaksha.in',
-};
+export function staffCreds(role: StaffRole) {
+  const key = role.toUpperCase();
+  const email = process.env[`E2E_${key}_EMAIL`];
+  const password = process.env[`E2E_${key}_PASSWORD`];
+  return email && password ? { email, password } : null;
+}
 
-/**
- * Log in as a given role by clicking the 1-click demo button
- * on the /auth page, then wait for redirect.
- */
-export async function loginAs(page: Page, role: Role) {
+export function requireStaff(role: StaffRole) {
+  const creds = staffCreds(role);
+  test.skip(!creds, `set E2E_${role.toUpperCase()}_EMAIL / _PASSWORD to run`);
+  return creds!;
+}
+
+export async function login(page: Page, identifier: string, password: string) {
   await page.goto('/auth');
-  // The demo buttons show the role label as visible text
-  const label = role.charAt(0).toUpperCase() + role.slice(1);
-  await page.getByRole('button', { name: new RegExp(label, 'i') }).first().click();
-  // Wait until we've navigated away from /auth
-  await page.waitForURL((url) => !url.pathname.includes('/auth'), { timeout: 10_000 });
+  await page.getByLabel('Email or Student Reg. No').fill(identifier);
+  await page.getByLabel('Password').fill(password);
+  await page.getByRole('button', { name: 'Sign In' }).click();
+  await page.waitForURL((url) => !url.pathname.startsWith('/auth'), { timeout: 20_000 });
 }
 
-/**
- * Inject auth state directly into localStorage (faster than UI login).
- * Useful for tests that just need auth state, not the login flow itself.
- */
-export async function injectAuth(page: Page, role: Role) {
-  const user = {
-    id: `usr-${role}-e2e`,
-    email: DEMO_EMAILS[role],
-    role,
-    fullName: `${role.charAt(0).toUpperCase() + role.slice(1)} E2E`,
-  };
-  await page.goto('/');
-  await page.evaluate((u) => {
-    localStorage.setItem('gk_auth_user', JSON.stringify(u));
-  }, user);
+export async function loginAs(page: Page, role: StaffRole) {
+  const creds = requireStaff(role);
+  await login(page, creds.email, creds.password);
+  await expect(page).toHaveURL(new RegExp(`/${role}/`));
 }
 
-export async function clearAuth(page: Page) {
-  if (page.url() === 'about:blank' || !page.url().startsWith('http')) {
-    await page.goto('/auth');
-  }
-  await page.evaluate(() => {
-    try {
-      localStorage.removeItem('gk_auth_user');
-      localStorage.removeItem('gk_institute_store');
-    } catch {
-      // Ignore security errors if origin is not ready
-    }
-  });
+/** Random 12-digit UPI transaction ID so reruns never collide. */
+export function randomUtr() {
+  return `6${Math.floor(Math.random() * 1e11).toString().padStart(11, '0')}`;
 }
