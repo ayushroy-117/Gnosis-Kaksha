@@ -24,7 +24,8 @@ import { Input } from '@/components/ui/Input';
 import { formatINR, formatDate, type FeePayment } from '@/lib/student-data';
 import { useStudentPortal } from '@/hooks/useStudentPortal';
 import { apiFetch } from '@/hooks/useApi';
-import { UPI_ID, upiPayUrl, normalizeUtr, UTR_PATTERN } from '@/lib/upi';
+import { upiPayUrl, normalizeUtr, UTR_PATTERN } from '@/lib/upi';
+import { usePaymentPayee } from '@/hooks/usePaymentPayee';
 import { OFFICE_PHONE_E164 } from '@/lib/institute-contact';
 import { QRCodeSVG } from 'qrcode.react';
 import { OfficialFeeReceiptModal } from '@/components/dashboard/OfficialFeeReceiptModal';
@@ -39,6 +40,7 @@ function generateUpiReference(registrationNumber: string): string {
 
 export default function StudentFeesPage() {
   const { data, error, loading, reload, viewingAs } = useStudentPortal();
+  const { payee, ready: payeeReady, error: payeeError, reload: reloadPayee } = usePaymentPayee();
   const [payModalOpen, setPayModalOpen] = useState(false);
   const [activeReceipt, setActiveReceipt] = useState<FeePayment | null>(null);
   const [utrNumber, setUtrNumber] = useState('');
@@ -64,7 +66,9 @@ export default function StudentFeesPage() {
   const canPay = !viewingAs && !isCleared && !isPendingVerification && profile.enrollmentStatus !== 'rejected';
   const payLabel = isAdmission ? 'Pay Admission Fee' : 'Pay Monthly Tuition';
 
+  const UPI_ID = payee.upiId;
   const upiIntentUrl = upiPayUrl({
+    payee,
     amount: payableAmount,
     reference: upiReference,
     note: `${isAdmission ? 'Admission' : 'Tuition'} ${profile.registrationNumber}`,
@@ -427,7 +431,17 @@ export default function StudentFeesPage() {
             <div className="flex flex-col sm:flex-row gap-4 items-center mb-5 bg-gray-50 p-4 rounded-xl border border-gray-200">
               <div className="p-2 bg-white rounded-lg border border-gray-200 shrink-0">
                 {/* Dynamic QR with amount + reference locked */}
-                <QRCodeSVG value={upiIntentUrl} size={130} level="M" />
+                {payeeReady ? (
+                  <QRCodeSVG value={upiIntentUrl} size={130} level="M" />
+                ) : payeeError ? (
+                  <button type="button" onClick={reloadPayee} className="flex h-[130px] w-[130px] items-center justify-center text-center text-xs font-semibold text-red-600">
+                    Couldn&apos;t load payment details. Tap to retry.
+                  </button>
+                ) : (
+                  <div className="flex h-[130px] w-[130px] items-center justify-center">
+                    <span className="h-8 w-8 animate-spin rounded-full border-4 border-[#1295D8] border-t-transparent" />
+                  </div>
+                )}
               </div>
               <div className="space-y-2.5 text-xs">
                 <div>
@@ -451,7 +465,8 @@ export default function StudentFeesPage() {
                   </div>
                 </div>
                 <a
-                  href={upiIntentUrl}
+                  href={payeeReady ? upiIntentUrl : undefined}
+                          aria-disabled={!payeeReady}
                   className="inline-flex items-center gap-1.5 text-xs text-[#1295D8] font-semibold hover:underline"
                 >
                   <ExternalLink size={13} /> Open in PhonePe / GPay / Paytm

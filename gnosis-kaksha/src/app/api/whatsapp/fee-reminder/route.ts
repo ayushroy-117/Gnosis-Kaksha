@@ -8,6 +8,7 @@ import {
 import { requirePermission } from '@/lib/authz';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getRoster } from '@/lib/server/institute';
+import { getPaymentSettings } from '@/lib/server/settings';
 import type { RosterStudent } from '@/lib/institute-data';
 
 const noPhone = (s: RosterStudent) =>
@@ -28,7 +29,8 @@ export async function GET(req: NextRequest) {
     const studentId = searchParams.get('studentId');
     const regNo = searchParams.get('regNo');
 
-    const allStudents = await getRoster(createAdminClient());
+    const db = createAdminClient();
+    const [allStudents, { upiId }] = await Promise.all([getRoster(db), getPaymentSettings(db)]);
     const pendingStudents = allStudents.filter(
       (s) => s.status === 'active' && s.feeState === 'due' && s.amountDue > 0
     );
@@ -51,6 +53,7 @@ export async function GET(req: NextRequest) {
         classNumber: student.classNumber,
         amountDue: student.amountDue,
         parentName: student.parentName,
+        upiId,
       });
 
       const phone = student.mobile;
@@ -82,6 +85,7 @@ export async function GET(req: NextRequest) {
         classNumber: s.classNumber,
         amountDue: s.amountDue,
         parentName: s.parentName,
+        upiId,
       });
 
       return {
@@ -121,7 +125,8 @@ export async function POST(req: NextRequest) {
   if (!auth.ok) return auth.response;
   try {
     const body = await req.json();
-    const allStudents = await getRoster(createAdminClient());
+    const db = createAdminClient();
+    const [allStudents, { upiId }] = await Promise.all([getRoster(db), getPaymentSettings(db)]);
 
     // ── Single Student Reminder ──────────────────────────────────────────────
     if (!body.batch) {
@@ -148,6 +153,7 @@ export async function POST(req: NextRequest) {
           classNumber: student.classNumber,
           amountDue: student.amountDue,
           parentName: student.parentName,
+          upiId,
         });
 
       const result = await sendWhatsAppMessage({ phone, message });
@@ -205,6 +211,7 @@ export async function POST(req: NextRequest) {
         classNumber: student.classNumber,
         amountDue: student.amountDue,
         parentName: student.parentName,
+        upiId,
       });
 
       const res = await sendWhatsAppMessage({ phone, message });

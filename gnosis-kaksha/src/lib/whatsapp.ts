@@ -1,4 +1,4 @@
-import { UPI_ID } from '@/lib/upi';
+import { DEFAULT_PAYEE } from '@/lib/upi';
 import { OFFICE_PHONE_DISPLAY } from '@/lib/institute-contact';
 /**
  * lib/whatsapp.ts
@@ -60,7 +60,7 @@ export function generateFeeReminderMessage(data: FeeReminderData): string {
   const currentMonth =
     data.period ||
     new Date().toLocaleString('en-IN', { month: 'long', year: 'numeric' });
-  const upi = data.upiId || UPI_ID;
+  const upi = data.upiId || DEFAULT_PAYEE.upiId;
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
   const link = data.portalUrl || `${siteUrl}/student/fees`;
   const contact = data.institutePhone || OFFICE_PHONE_DISPLAY;

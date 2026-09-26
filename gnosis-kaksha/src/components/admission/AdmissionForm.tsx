@@ -24,7 +24,8 @@ import { BillingSidebar } from './BillingSidebar';
 import { calculateBill, calculateScholarship, SUBJECT_FEES } from '@/lib/fees';
 import { useAuth } from '@/hooks/useAuth';
 import { useRouter } from 'next/navigation';
-import { UPI_ID, upiPayUrl } from '@/lib/upi';
+import { upiPayUrl } from '@/lib/upi';
+import { usePaymentPayee } from '@/hooks/usePaymentPayee';
 import { QRCodeSVG } from 'qrcode.react';
 import { ReceiptSheet } from '@/components/dashboard/OfficialFeeReceiptModal';
 import toast from 'react-hot-toast';
@@ -157,9 +158,11 @@ export function AdmissionForm() {
 
   const payableAmount = billDetails?.finalPayable || 950;
 
+  const { payee, ready: payeeReady, error: payeeError, reload: reloadPayee } = usePaymentPayee();
+  const UPI_ID = payee.upiId;
   const upiIntentUrl = useMemo(
-    () => upiPayUrl({ amount: payableAmount, note: `Admission fee ${formData.fullName || ''}`.trim() }),
-    [payableAmount, formData.fullName]
+    () => upiPayUrl({ payee, amount: payableAmount, note: `Admission fee ${formData.fullName || ''}`.trim() }),
+    [payee, payableAmount, formData.fullName]
   );
 
   const handleNext = async () => {
@@ -606,12 +609,17 @@ export function AdmissionForm() {
                     {/* QR Code */}
                     <div className="flex flex-col items-center justify-center p-4 bg-white rounded-xl border border-[#CDE6F7] shadow-xs">
                       <div className="p-2 bg-white rounded-lg">
-                        <QRCodeSVG
-                          value={upiIntentUrl}
-                          size={180}
-                          level="M"
-                          includeMargin={true}
-                        />
+                        {payeeReady ? (
+                          <QRCodeSVG value={upiIntentUrl} size={180} level="M" includeMargin={true} />
+                        ) : payeeError ? (
+                          <button type="button" onClick={reloadPayee} className="flex h-[180px] w-[180px] items-center justify-center text-center text-xs font-semibold text-red-600">
+                            Couldn&apos;t load payment details. Tap to retry.
+                          </button>
+                        ) : (
+                          <div className="flex h-[180px] w-[180px] items-center justify-center">
+                            <span className="h-8 w-8 animate-spin rounded-full border-4 border-[#1295D8] border-t-transparent" />
+                          </div>
+                        )}
                       </div>
                       <p className="text-[11px] text-gray-500 font-medium mt-2 text-center flex items-center gap-1">
                         <QrCode size={13} /> Scan with Any UPI App
@@ -640,7 +648,8 @@ export function AdmissionForm() {
                       {/* Mobile Deep Link */}
                       <div>
                         <a
-                          href={upiIntentUrl}
+                          href={payeeReady ? upiIntentUrl : undefined}
+                          aria-disabled={!payeeReady}
                           className="inline-flex items-center justify-center gap-2 w-full py-2.5 px-4 rounded-lg bg-[#1295D8] text-white font-semibold text-xs hover:bg-[#2E5EAA] transition shadow-xs"
                         >
                           <ExternalLink size={14} /> Pay via Installed UPI App
