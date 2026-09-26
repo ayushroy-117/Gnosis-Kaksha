@@ -139,30 +139,35 @@ select:-webkit-autofill {
     background: #ffffff !important;
   }
 
-  /* Prevent page breaks inside the receipt container and isolate receipt */
-  body:has(.receipt-single-page) * {
-    visibility: hidden;
+  /*
+   * Receipt printing: when a receipt is on screen, print ONLY the receipt,
+   * from the top of a single A4 page.
+   * 1. Remove (not just hide) everything that neither is nor contains it, so
+   *    the dashboard underneath takes no space.
+   * 2. Flatten the receipt's ancestors (modal backdrop, card, page wrappers)
+   *    so none of them add offsets, scroll clipping or height limits.
+   */
+  body:has(.receipt-single-page) *:not(:has(.receipt-single-page)):not(.receipt-single-page):not(.receipt-single-page *) {
+    display: none !important;
   }
 
-  body:has(.receipt-single-page) .receipt-single-page,
-  body:has(.receipt-single-page) .receipt-single-page * {
-    visibility: visible;
-  }
-
-  body:has(.receipt-single-page) .receipt-single-page {
-    position: absolute !important;
-    left: 0 !important;
-    top: 0 !important;
-    right: 0 !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    max-height: 275mm !important;
-    margin: 0 auto !important;
+  body:has(.receipt-single-page) *:has(.receipt-single-page) {
+    display: block !important;
+    position: static !important;
+    inset: auto !important;
+    transform: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
     box-shadow: none !important;
-    page-break-inside: avoid !important;
-    break-inside: avoid !important;
-    page-break-after: avoid !important;
-    break-after: avoid !important;
+    background: transparent !important;
+    width: 100% !important;
+    max-width: none !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+    backdrop-filter: none !important;
   }
 
   .receipt-single-page {
