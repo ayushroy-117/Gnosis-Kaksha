@@ -1,3 +1,8 @@
+> **Database & auth:** the app now uses a self-hosted Supabase stack on the VPS. Follow
+> [`deploy/README.md`](deploy/README.md) first; this file covers only the app container.
+> Supabase keys are server-side runtime env (`SUPABASE_URL`, `SUPABASE_ANON_KEY`,
+> `SUPABASE_SERVICE_ROLE_KEY`), not `NEXT_PUBLIC_*` build args.
+
 # 🚀 Gnosis Kaksha — VPS Deployment Guide (Docker)
 
 This guide walks you through deploying the Gnosis Kaksha Next.js application to your VPS (Virtual Private Server) using Docker and Docker Compose.
@@ -45,7 +50,6 @@ Configure firewall:
 sudo ufw allow OpenSSH
 sudo ufw allow 80/tcp
 sudo ufw allow 443/tcp
-sudo ufw allow 3000/tcp # (Optional, for direct port testing)
 sudo ufw enable
 ```
 
@@ -101,10 +105,10 @@ nano .env
 
 Fill in your actual production values:
 ```ini
-# Supabase
-NEXT_PUBLIC_SUPABASE_URL=https://gjhvrqmtbqzgxneowhwf.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key-here
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key-here
+# Self-hosted Supabase (see deploy/README.md step 5)
+SUPABASE_URL=http://api-gw:8000
+SUPABASE_ANON_KEY=...
+SUPABASE_SERVICE_ROLE_KEY=...
 
 # Site URL (set to your domain or VPS IP)
 NEXT_PUBLIC_SITE_URL=https://yourdomain.com
@@ -114,9 +118,8 @@ PORT=3000
 WHATSAPP_API_TOKEN=your-meta-token
 WHATSAPP_PHONE_NUMBER_ID=your-phone-id
 
-# Razorpay (Optional, for live fee collections)
-NEXT_PUBLIC_RAZORPAY_KEY_ID=
-RAZORPAY_KEY_SECRET=
+# UPI payee shown in payment QR codes
+NEXT_PUBLIC_UPI_ID=gnosiskaksha@upi
 ```
 
 Save and exit (`Ctrl + O`, `Enter`, `Ctrl + X`).
@@ -141,7 +144,7 @@ docker compose logs -f
 ```
 
 The application is now live at:
-`http://<YOUR_VPS_IP>:3000`
+`http://127.0.0.1:3000` on the VPS (bound to localhost; public traffic goes through Nginx)
 
 ---
 

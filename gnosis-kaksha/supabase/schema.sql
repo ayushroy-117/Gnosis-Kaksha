@@ -1,8 +1,9 @@
 -- =============================================================================
 -- Gnosis Kaksha — Full Database Schema
 -- =============================================================================
--- Run this entire file in: Supabase Dashboard → SQL Editor → Run
--- It is idempotent (safe to re-run).
+-- Historical base schema. For a new database run this, then every file in
+-- supabase/migrations/ in order (deploy/scripts/migrate-from-cloud.sh does
+-- this for the cloud -> VPS move). It is idempotent (safe to re-run).
 -- =============================================================================
 
 
