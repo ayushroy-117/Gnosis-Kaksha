@@ -1,8 +1,11 @@
 import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { calculateBill, EXAM_FEE, SUBJECT_FEES, TSHIRT_FEE } from '@/lib/fees';
+import type { SessionUser } from '@/lib/authz';
 import {
+  canTeach,
   currentPeriodLabel,
+  type TeachingAssignment,
   type AccountantData,
   type AdminData,
   type InstituteNotice,
@@ -226,15 +229,55 @@ export async function buildAccountantData(db: SupabaseClient): Promise<Accountan
   };
 }
 
-export async function buildTeacherData(db: SupabaseClient): Promise<TeacherData> {
-  const [roster, allocations] = await Promise.all([getRoster(db), getAllocations(db)]);
+// ---------------------------------------------------------------------------
+// Teacher assignments
+// ---------------------------------------------------------------------------
+
+export async function getAssignments(db: SupabaseClient, teacherId: string): Promise<TeachingAssignment[]> {
+  const rows = await must(
+    db.from('teacher_assignments').select('subject, class_number').eq('teacher_id', teacherId).order('class_number')
+  );
+  return (rows as Array<{ subject: string; class_number: number }>).map((r) => ({ subject: r.subject, classNumber: r.class_number }));
+}
+
+/**
+ * What a user may act on as a teacher: their assignments if they are a
+ * teacher, or null (unrestricted) for admin/accountant.
+ */
+export async function teacherScopeFor(db: SupabaseClient, user: SessionUser): Promise<TeachingAssignment[] | null> {
+  return user.role === 'teacher' ? getAssignments(db, user.id) : null;
+}
+
+export async function buildTeacherData(db: SupabaseClient, user: SessionUser): Promise<TeacherData> {
+  const [roster, allocations, scope] = await Promise.all([getRoster(db), getAllocations(db), teacherScopeFor(db, user)]);
+  const active = roster.filter((s) => s.status === 'active');
+  const taught = scope === null ? active : active.filter((s) => s.subjects.some((sub) => canTeach(scope, sub, s.classNumber)));
   return {
-    roster: roster.filter((s) => s.status === 'active').map(toTeacherView),
-    allocations,
+    roster: taught.map(toTeacherView),
+    allocations: scope === null ? allocations : allocations.filter((a) => canTeach(scope, a.subject, a.classNumber)),
+    assignments: scope,
   };
 }
 
-// Teachers assigned per subject (from the institute's teacher roster).
+/** "Class-Subject" -> teacher names, from active teacher accounts' assignments. */
+async function assignedTeacherNames(db: SupabaseClient, classNumber: number): Promise<Map<string, string[]>> {
+  const rows = await must(
+    db
+      .from('teacher_assignments')
+      .select('subject, profiles!inner(full_name, is_active, role)')
+      .eq('class_number', classNumber)
+  );
+  const map = new Map<string, string[]>();
+  for (const r of rows as unknown as Array<{ subject: string; profiles: { full_name: string | null; is_active: boolean; role: string } }>) {
+    if (!r.profiles?.is_active || r.profiles.role !== 'teacher' || !r.profiles.full_name) continue;
+    const key = r.subject.toLowerCase();
+    map.set(key, [...(map.get(key) ?? []), r.profiles.full_name]);
+  }
+  return map;
+}
+
+// Fallback names from the institute's published faculty list, used only until
+// the admin assigns a teacher account to that subject/class.
 const SUBJECT_TEACHERS: Record<string, string> = {
   Mathematics: 'Joydeep Dey',
   Science: 'Ankur Kumar Nath',
@@ -274,16 +317,17 @@ export async function buildStudentData(db: SupabaseClient, studentId: string): P
   if (!row) return null;
   const student = mapStudent(row);
 
-  const [transactions, noticeList] = await Promise.all([
+  const [transactions, noticeList, assigned] = await Promise.all([
     getTransactions(db, student.id),
     getNotices(db, noticeAudiencesFor('student')),
+    assignedTeacherNames(db, student.classNumber),
   ]);
 
   const classFees = SUBJECT_FEES[student.classNumber] ?? {};
   const subjects = student.subjects.map((name) => ({
     name,
     monthlyFee: classFees[name] ?? 0,
-    teacher: SUBJECT_TEACHERS[name] ?? 'To be assigned',
+    teacher: assigned.get(name.toLowerCase())?.join(', ') ?? SUBJECT_TEACHERS[name] ?? 'To be assigned',
   }));
   const bill = calculateBill(
     subjects.map((s) => ({ name: s.name, monthly_fee: s.monthlyFee })),

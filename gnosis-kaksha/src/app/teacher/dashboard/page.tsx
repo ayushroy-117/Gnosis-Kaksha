@@ -26,8 +26,28 @@ export default function TeacherDashboardPage() {
 
       <div>
         <h1 className="text-3xl font-bold text-[#1A2B4A]">Teacher Overview</h1>
-        <p className="mt-1 text-[#4A5568]">Manage your students and subject allocation requests.</p>
+        <p className="mt-1 text-[#4A5568]">Your classes, students and subject allocation requests.</p>
       </div>
+
+      {data.assignments !== null && (
+        data.assignments.length === 0 ? (
+          <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800">
+            <span className="font-semibold">No subjects are assigned to you yet.</span> Ask the admin to set your subjects
+            (Accounts &amp; Permissions → Edit subjects). Until then you won&apos;t see any students or classes.
+          </div>
+        ) : (
+          <div className="rounded-xl border border-gray-200 bg-white px-5 py-4 shadow-sm">
+            <p className="text-xs font-semibold uppercase tracking-wide text-[#718096]">Your subjects</p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {data.assignments.map((a) => (
+                <span key={`${a.classNumber}:${a.subject}`} className="rounded-full bg-[#CDE6F7] px-2.5 py-0.5 text-xs font-semibold text-[#2E5EAA]">
+                  {a.subject} · Class {a.classNumber}
+                </span>
+              ))}
+            </div>
+          </div>
+        )
+      )}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <StatCard

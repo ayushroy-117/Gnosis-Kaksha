@@ -20,7 +20,15 @@ export async function GET() {
       .order('created_at', { ascending: false });
     if (error) throw error;
 
-    const { data: authUsers } = await db.auth.admin.listUsers({ page: 1, perPage: 1000 });
+    const [{ data: authUsers }, { data: assignmentRows, error: asgErr }] = await Promise.all([
+      db.auth.admin.listUsers({ page: 1, perPage: 1000 }),
+      db.from('teacher_assignments').select('teacher_id, subject, class_number').order('class_number'),
+    ]);
+    if (asgErr) throw asgErr;
+    const assignmentsBy = new Map<string, Array<{ subject: string; classNumber: number }>>();
+    for (const r of assignmentRows ?? []) {
+      assignmentsBy.set(r.teacher_id, [...(assignmentsBy.get(r.teacher_id) ?? []), { subject: r.subject, classNumber: r.class_number }]);
+    }
     const lastSignIn = new Map((authUsers?.users ?? []).map((u) => [u.id, u.last_sign_in_at ?? null]));
 
     const accounts = (data ?? []).map((p) => ({
@@ -33,6 +41,7 @@ export async function GET() {
       lastSignInAt: lastSignIn.get(p.id) ?? null,
       registrationNumber: (p.students as { registration_number?: string } | null)?.registration_number ?? null,
       permissions: getPermissions(p.role as UserRole),
+      assignments: p.role === 'teacher' ? assignmentsBy.get(p.id) ?? [] : null,
     }));
     return NextResponse.json({ accounts });
   } catch (err) {

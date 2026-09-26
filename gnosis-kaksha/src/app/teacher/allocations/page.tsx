@@ -10,7 +10,7 @@ import { Select } from '@/components/ui/Select';
 import { LoadingState, ErrorState } from '@/components/dashboard/PageState';
 import { useApi, apiFetch } from '@/hooks/useApi';
 import { SUBJECT_FEES } from '@/lib/fees';
-import { classLabel, formatDate, type SubjectAllocationRequest, type TeacherData } from '@/lib/institute-data';
+import { canTeach, classLabel, formatDate, type SubjectAllocationRequest, type TeacherData } from '@/lib/institute-data';
 import toast from 'react-hot-toast';
 
 export default function TeacherAllocationsPage() {
@@ -26,6 +26,7 @@ export default function TeacherAllocationsPage() {
   const availableSubjects = selectedStudent
     ? Object.keys(SUBJECT_FEES[selectedStudent.classNumber] ?? {}).filter(
         (sub) =>
+          canTeach(data?.assignments ?? null, sub, selectedStudent.classNumber) &&
           !selectedStudent.subjects.includes(sub) &&
           !requests.some((r) => r.studentId === selectedStudent.id && r.subject === sub && r.status === 'PENDING'),
       )

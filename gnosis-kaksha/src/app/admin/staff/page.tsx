@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { UserPlus, Shield, Calculator, BookOpen, GraduationCap, KeyRound, ChevronDown, Users } from 'lucide-react';
+import { UserPlus, Shield, Calculator, BookOpen, GraduationCap, KeyRound, ChevronDown, Users, Library } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { SectionCard } from '@/components/dashboard/SectionCard';
 import { Badge } from '@/components/dashboard/Badge';
@@ -13,6 +13,8 @@ import { Select } from '@/components/ui/Select';
 import { Modal } from '@/components/ui/Modal';
 import { apiFetch, useApi } from '@/hooks/useApi';
 import { formatDate } from '@/lib/format';
+import { SUBJECT_FEES } from '@/lib/fees';
+import type { TeachingAssignment } from '@/lib/institute-data';
 import type { Permission, UserRole } from '@/lib/permissions';
 
 interface Account {
@@ -25,7 +27,11 @@ interface Account {
   lastSignInAt: string | null;
   registrationNumber: string | null;
   permissions: Permission[];
+  assignments: TeachingAssignment[] | null;
 }
+
+const CLASS_NUMBERS = Object.keys(SUBJECT_FEES).map(Number).sort((a, b) => a - b);
+const slotKey = (a: TeachingAssignment) => `${a.classNumber}:${a.subject}`;
 
 const ROLE_ICON: Record<UserRole, React.ReactNode> = {
   admin: <Shield size={18} className="text-[#2E5EAA]" />,
@@ -61,6 +67,41 @@ export default function AdminAccountsPage() {
   const [roleFilter, setRoleFilter] = useState<'all' | UserRole>('all');
   const [resetTarget, setResetTarget] = useState<Account | null>(null);
   const [newPassword, setNewPassword] = useState('');
+  const [subjectsTarget, setSubjectsTarget] = useState<Account | null>(null);
+  const [selectedSlots, setSelectedSlots] = useState<Set<string>>(new Set());
+  const [savingSubjects, setSavingSubjects] = useState(false);
+
+  const openSubjects = (a: Account) => {
+    setSubjectsTarget(a);
+    setSelectedSlots(new Set((a.assignments ?? []).map(slotKey)));
+  };
+
+  const toggleSlot = (key: string) =>
+    setSelectedSlots((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+
+  const saveSubjects = async () => {
+    if (!subjectsTarget) return;
+    setSavingSubjects(true);
+    try {
+      const assignments = [...selectedSlots].map((k) => {
+        const [cls, ...rest] = k.split(':');
+        return { classNumber: Number(cls), subject: rest.join(':') };
+      });
+      await apiFetch('/api/admin/assignments', { method: 'PUT', json: { teacherId: subjectsTarget.id, assignments } });
+      toast.success(`Subjects saved for ${subjectsTarget.fullName || subjectsTarget.email}.`);
+      setSubjectsTarget(null);
+      reload();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not save subjects.');
+    } finally {
+      setSavingSubjects(false);
+    }
+  };
 
   const accounts = data?.accounts ?? [];
   const visible = roleFilter === 'all' ? accounts : accounts.filter((a) => a.role === roleFilter);
@@ -268,6 +309,28 @@ export default function AdminAccountsPage() {
                         )}
                       </div>
 
+                      {a.role === 'teacher' && (
+                        <div className="mt-3 flex flex-wrap items-center gap-1.5 sm:pl-14">
+                          {(a.assignments ?? []).length === 0 ? (
+                            <span className="text-xs font-medium text-amber-700">No subjects assigned — this teacher sees no classes yet.</span>
+                          ) : (
+                            (a.assignments ?? []).map((s) => (
+                              <span key={slotKey(s)} className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800 ring-1 ring-amber-200">
+                                {s.subject} · Class {s.classNumber}
+                              </span>
+                            ))
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => openSubjects(a)}
+                            disabled={!a.isActive}
+                            className="inline-flex items-center gap-1 text-xs font-semibold text-[#1295D8] hover:underline disabled:opacity-50"
+                          >
+                            <Library size={13} /> Edit subjects
+                          </button>
+                        </div>
+                      )}
+
                       {expanded === a.id && (
                         <div className="mt-3 flex flex-wrap gap-1.5 sm:pl-14">
                           {a.permissions.map((p) => (
@@ -285,6 +348,48 @@ export default function AdminAccountsPage() {
           </SectionCard>
         </div>
       </div>
+
+      <Modal
+        isOpen={!!subjectsTarget}
+        onClose={() => setSubjectsTarget(null)}
+        title={`Subjects taught by ${subjectsTarget?.fullName || subjectsTarget?.email || ''}`}
+        size="xl"
+      >
+        <p className="mb-4 text-sm text-[#4A5568]">
+          Tick each subject this teacher teaches, per class. They will only see those students, and can only take
+          attendance, upload material and request allocations for them. Students see their name on My Courses.
+        </p>
+        <div className="max-h-[55vh] space-y-4 overflow-y-auto pr-1">
+          {CLASS_NUMBERS.map((cls) => (
+            <fieldset key={cls} className="rounded-lg border border-gray-200 p-3">
+              <legend className="px-1 text-sm font-semibold text-[#1A2B4A]">Class {cls}</legend>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {Object.keys(SUBJECT_FEES[cls]).map((subject) => {
+                  const key = `${cls}:${subject}`;
+                  return (
+                    <label key={key} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm text-[#1A2B4A] hover:bg-[#F0F7FD]">
+                      <input
+                        type="checkbox"
+                        checked={selectedSlots.has(key)}
+                        onChange={() => toggleSlot(key)}
+                        className="h-4 w-4 rounded border-gray-300 text-[#1295D8] focus:ring-[#1295D8]"
+                      />
+                      {subject}
+                    </label>
+                  );
+                })}
+              </div>
+            </fieldset>
+          ))}
+        </div>
+        <div className="mt-5 flex items-center justify-between gap-3">
+          <span className="text-xs text-[#718096]">{selectedSlots.size} selected</span>
+          <div className="flex gap-3">
+            <Button type="button" variant="outline" onClick={() => setSubjectsTarget(null)}>Cancel</Button>
+            <Button type="button" variant="primary" isLoading={savingSubjects} onClick={saveSubjects}>Save subjects</Button>
+          </div>
+        </div>
+      </Modal>
 
       <Modal
         isOpen={!!resetTarget}

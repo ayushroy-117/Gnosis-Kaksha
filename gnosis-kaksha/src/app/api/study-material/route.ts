@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { requirePermission, serverError } from '@/lib/authz';
 import { createAdminClient } from '@/lib/supabase/admin';
 import type { MaterialCategory, StudyMaterial } from '@/lib/study-materials';
+import { teacherScopeFor } from '@/lib/server/institute';
+import { canTeach } from '@/lib/institute-data';
 
 export const dynamic = 'force-dynamic';
 
@@ -107,9 +109,13 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const bytes = Buffer.from(await file.arrayBuffer());
     const m = parsed.data;
-    const { data, error } = await createAdminClient()
+    const db = createAdminClient();
+    if (!canTeach(await teacherScopeFor(db, auth.user), m.subject, m.classNumber)) {
+      return NextResponse.json({ success: false, error: `You are not assigned to teach ${m.subject} for Class ${m.classNumber}. Ask the admin to update your subjects.` }, { status: 403 });
+    }
+    const bytes = Buffer.from(await file.arrayBuffer());
+    const { data, error } = await db
       .from('study_materials')
       .insert({
         title: m.title,
@@ -142,7 +148,17 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ success: false, error: 'A valid id is required.' }, { status: 400 });
   }
   try {
-    const { data, error } = await createAdminClient().from('study_materials').delete().eq('id', id).select('id');
+    const db = createAdminClient();
+    const scope = await teacherScopeFor(db, auth.user);
+    if (scope !== null) {
+      // Teachers may delete their own uploads, or material for subjects they teach.
+      const { data: m } = await db.from('study_materials').select('subject, class_number, uploader_id').eq('id', id).maybeSingle();
+      if (!m) return NextResponse.json({ success: false, error: 'Not found.' }, { status: 404 });
+      if (m.uploader_id !== auth.user.id && !canTeach(scope, m.subject, m.class_number)) {
+        return NextResponse.json({ success: false, error: 'You can only delete material for subjects you teach.' }, { status: 403 });
+      }
+    }
+    const { data, error } = await db.from('study_materials').delete().eq('id', id).select('id');
     if (error) throw error;
     if (!data?.length) return NextResponse.json({ success: false, error: 'Not found.' }, { status: 404 });
     return NextResponse.json({ success: true });

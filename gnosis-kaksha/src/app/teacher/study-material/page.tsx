@@ -16,6 +16,7 @@ import { LoadingState, ErrorState } from '@/components/dashboard/PageState';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { useApi, apiFetch } from '@/hooks/useApi';
+import { canTeach, type TeacherData } from '@/lib/institute-data';
 import { SUBJECT_FEES } from '@/lib/fees';
 import {
   MATERIAL_CATEGORIES,
@@ -52,7 +53,19 @@ export default function TeacherStudyMaterialPage() {
   const [formFile, setFormFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const formSubjects = subjectsForClass(Number(formClass));
+  // Upload options are limited to what this teacher is assigned (admin: everything).
+  const { data: teacherData } = useApi<TeacherData>('/api/data/teacher');
+  const scope = teacherData?.assignments ?? null;
+  const allowedSubjects = (cls: number) => subjectsForClass(cls).filter((s) => canTeach(scope, s, cls));
+  const uploadClasses = CLASSES.filter((c) => allowedSubjects(c).length > 0);
+  const formSubjects = allowedSubjects(Number(formClass));
+  const openUpload = () => {
+    const cls = uploadClasses.includes(Number(formClass)) ? Number(formClass) : uploadClasses[0];
+    if (cls === undefined) return;
+    setFormClass(String(cls));
+    if (!allowedSubjects(cls).includes(formSubject)) setFormSubject(allowedSubjects(cls)[0] ?? '');
+    setShowUploadModal(true);
+  };
 
   const filtered = materials.filter((m) => {
     if (classFilter !== 'all' && m.classNumber !== Number(classFilter)) {
@@ -173,7 +186,9 @@ export default function TeacherStudyMaterialPage() {
         <Button
           type="button"
           variant="primary"
-          onClick={() => setShowUploadModal(true)}
+          onClick={openUpload}
+          disabled={!!teacherData && uploadClasses.length === 0}
+          title={teacherData && uploadClasses.length === 0 ? 'No subjects assigned to you yet' : undefined}
           className="flex items-center gap-1.5 self-start"
         >
           <Plus size={16} /> Upload New Material
@@ -333,12 +348,12 @@ export default function TeacherStudyMaterialPage() {
                     value={formClass}
                     onChange={(e) => {
                       setFormClass(e.target.value);
-                      const subs = subjectsForClass(Number(e.target.value));
+                      const subs = allowedSubjects(Number(e.target.value));
                       if (!subs.includes(formSubject)) setFormSubject(subs[0] ?? '');
                     }}
                     className="w-full rounded-lg border-2 border-gray-300 p-2 text-xs bg-white focus:border-[#1295D8] focus:outline-none"
                   >
-                    {CLASSES.map((c) => (
+                    {uploadClasses.map((c) => (
                       <option key={c} value={c}>
                         Class {c}
                       </option>

@@ -128,9 +128,27 @@ export interface AccountantData {
   currentPeriod: string;
 }
 
+/** One subject a teacher teaches for one class. */
+export interface TeachingAssignment {
+  subject: string;
+  classNumber: number;
+}
+
 export interface TeacherData {
   roster: TeacherRosterStudent[];
   allocations: SubjectAllocationRequest[];
+  /**
+   * The signed-in teacher's assignments. `null` means unrestricted (admin or
+   * accountant viewing); an empty array means nothing assigned yet.
+   */
+  assignments: TeachingAssignment[] | null;
+}
+
+/** True if the scope allows this subject/class (null scope = unrestricted). */
+export function canTeach(scope: TeachingAssignment[] | null, subject: string, classNumber: number): boolean {
+  if (scope === null) return true;
+  const s = subject.trim().toLowerCase();
+  return scope.some((a) => a.classNumber === classNumber && a.subject.toLowerCase() === s);
 }
 
 /** Label for the current billing month, e.g. "September 2026". */

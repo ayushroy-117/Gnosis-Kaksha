@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { requirePermission, serverError } from '@/lib/authz';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { teacherScopeFor } from '@/lib/server/institute';
+import { canTeach } from '@/lib/institute-data';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,7 +33,9 @@ export async function GET(request: NextRequest) {
   if (!auth.ok) return auth.response;
   const sp = request.nextUrl.searchParams;
   try {
-    let q = createAdminClient().from('attendance_records').select('*').order('date', { ascending: false }).limit(100);
+    const db = createAdminClient();
+    const scope = await teacherScopeFor(db, auth.user);
+    let q = db.from('attendance_records').select('*').order('date', { ascending: false }).limit(100);
     const date = sp.get('date');
     const classNumber = Number(sp.get('classNumber')) || null;
     const subject = sp.get('subject');
@@ -40,7 +44,8 @@ export async function GET(request: NextRequest) {
     if (subject) q = q.ilike('subject', subject);
     const { data, error } = await q;
     if (error) throw error;
-    return NextResponse.json({ records: (data ?? []).map(mapRecord) });
+    const records = (data ?? []).map(mapRecord).filter((r) => canTeach(scope, r.subject, r.classNumber));
+    return NextResponse.json({ records });
   } catch (err) {
     return serverError('attendance GET', err, 'Could not load attendance.');
   }
@@ -78,6 +83,9 @@ export async function POST(request: NextRequest) {
 
   try {
     const db = createAdminClient();
+    if (!canTeach(await teacherScopeFor(db, auth.user), r.subject, r.classNumber)) {
+      return NextResponse.json({ error: `You are not assigned to teach ${r.subject} for Class ${r.classNumber}. Ask the admin to update your subjects.` }, { status: 403 });
+    }
     const row = {
       date: r.date,
       class_number: r.classNumber,

@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { requirePermission, serverError } from '@/lib/authz';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { getAllocations, mapAllocation } from '@/lib/server/institute';
+import { getAllocations, mapAllocation, teacherScopeFor } from '@/lib/server/institute';
+import { canTeach } from '@/lib/institute-data';
 import { SUBJECT_FEES } from '@/lib/fees';
 
 export const dynamic = 'force-dynamic';
@@ -12,7 +13,9 @@ export async function GET() {
   const auth = await requirePermission('view_allocations');
   if (!auth.ok) return auth.response;
   try {
-    return NextResponse.json({ allocations: await getAllocations(createAdminClient()) });
+    const db = createAdminClient();
+    const [all, scope] = await Promise.all([getAllocations(db), teacherScopeFor(db, auth.user)]);
+    return NextResponse.json({ allocations: all.filter((a) => canTeach(scope, a.subject, a.classNumber)) });
   } catch (err) {
     return serverError('allocations GET', err, 'Could not load allocation requests.');
   }
@@ -42,6 +45,9 @@ export async function POST(request: NextRequest) {
       .maybeSingle();
     if (!student || student.status !== 'active') {
       return NextResponse.json({ error: 'Student not found or not currently enrolled.' }, { status: 404 });
+    }
+    if (!canTeach(await teacherScopeFor(db, auth.user), subject, student.class_number)) {
+      return NextResponse.json({ error: `You are not assigned to teach ${subject} for Class ${student.class_number}. Ask the admin to update your subjects.` }, { status: 403 });
     }
     if (!((SUBJECT_FEES[student.class_number] ?? {}) as Record<string, number>)[subject]) {
       return NextResponse.json({ error: `${subject} is not offered for Class ${student.class_number}.` }, { status: 400 });

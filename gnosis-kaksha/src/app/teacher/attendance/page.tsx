@@ -15,7 +15,7 @@ import { SectionCard } from '@/components/dashboard/SectionCard';
 import { EmptyState } from '@/components/dashboard/EmptyState';
 import { Button } from '@/components/ui/Button';
 import { LoadingState, ErrorState } from '@/components/dashboard/PageState';
-import type { TeacherData } from '@/lib/institute-data';
+import { canTeach, type TeacherData } from '@/lib/institute-data';
 import type { AttendanceRecord, AttendanceStatus, AttendanceEntry } from '@/lib/attendance-store';
 import { useAuth } from '@/hooks/useAuth';
 import { useApi, apiFetch } from '@/hooks/useApi';
@@ -48,11 +48,16 @@ export default function TeacherAttendancePage() {
     return (data?.roster ?? []).filter((s) => s.status === 'active');
   }, [data]);
 
-  // Available classes in institute
+  // Classes that have students in a subject this teacher teaches
+  const scope = data?.assignments ?? null;
   const availableClasses = useMemo(() => {
-    const set = new Set(allActiveStudents.map((s) => s.classNumber));
+    const set = new Set(
+      allActiveStudents
+        .filter((s) => s.subjects.some((sub) => canTeach(scope, sub, s.classNumber)))
+        .map((s) => s.classNumber)
+    );
     return Array.from(set).sort((a, b) => a - b);
-  }, [allActiveStudents]);
+  }, [allActiveStudents, scope]);
 
   const selectedClass =
     chosenClass !== null && availableClasses.includes(chosenClass) ? chosenClass : availableClasses[0] ?? null;
@@ -62,9 +67,9 @@ export default function TeacherAttendancePage() {
     const set = new Set<string>();
     allActiveStudents
       .filter((s) => s.classNumber === selectedClass)
-      .forEach((s) => s.subjects.forEach((sub) => set.add(sub)));
+      .forEach((s) => s.subjects.forEach((sub) => selectedClass !== null && canTeach(scope, sub, selectedClass) && set.add(sub)));
     return Array.from(set).sort();
-  }, [allActiveStudents, selectedClass]);
+  }, [allActiveStudents, selectedClass, scope]);
 
   const selectedSubject =
     chosenSubject && availableSubjectsForClass.includes(chosenSubject)
