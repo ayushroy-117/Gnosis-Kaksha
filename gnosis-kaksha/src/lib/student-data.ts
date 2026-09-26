@@ -42,7 +42,7 @@ export interface FeePayment {
   description: string;
   amount: number;
   method: string;
-  status: 'paid' | 'pending';
+  status: 'paid' | 'pending' | 'rejected';
   utr?: string;
 }
 
@@ -55,7 +55,7 @@ export interface FeeStatus {
   tshirtFee: number;
   mandatoryCharges: number;
   finalPayable: number;
-  status: 'paid' | 'due' | 'partial';
+  status: 'paid' | 'due' | 'partial' | 'pending_verification';
   nextDueDate: string;
   payments: FeePayment[];
 }
@@ -139,7 +139,7 @@ export function getStudentData(userIdentifier?: string): StudentData {
         description: t.description,
         amount: t.amount,
         method: t.method,
-        status: t.status === 'pending' ? 'pending' : 'paid',
+        status: t.status === 'verified' ? 'paid' : t.status === 'rejected' ? 'rejected' : 'pending',
         utr: t.utr,
       }))
     : [
@@ -162,6 +162,7 @@ export function getStudentData(userIdentifier?: string): StudentData {
       ];
 
   const isPaid = student?.feeState === 'paid';
+  const isPendingVerification = student?.feeState === 'pending_verification';
 
   const feeStatus: FeeStatus = {
     monthlyTuition: student?.monthlyTuition || bill.monthlyTuition,
@@ -172,7 +173,7 @@ export function getStudentData(userIdentifier?: string): StudentData {
     tshirtFee: TSHIRT_FEE,
     mandatoryCharges: bill.mandatoryCharges,
     finalPayable: isPaid ? 0 : (student?.amountDue ?? bill.tuitionAfterScholarship),
-    status: isPaid ? 'paid' : 'due',
+    status: isPaid ? 'paid' : isPendingVerification ? 'pending_verification' : 'due',
     nextDueDate: '2026-09-10',
     payments,
   };

@@ -6,7 +6,7 @@ import {
 
 
 export type EnrollmentStatus = 'active' | 'pending' | 'rejected';
-export type StudentFeeState = 'paid' | 'due';
+export type StudentFeeState = 'paid' | 'due' | 'pending_verification';
 
 export interface RosterStudent {
   id: string;
@@ -48,8 +48,13 @@ export interface Transaction {
   amount: number;
   method: 'UPI' | 'Cash' | 'Card' | 'Bank Transfer';
   utr?: string;
-  status?: 'verified' | 'pending';
+  upiReference?: string;    // unique reference embedded in the dynamic QR (tr= param)
+  status?: 'verified' | 'pending' | 'rejected';
+  rejectedNote?: string;    // reason if accountant rejects
+  verifiedBy?: string;      // accountant name/email
+  verifiedAt?: string;      // ISO date of approval/rejection
 }
+
 
 export interface InstituteNotice {
   id: string;
@@ -759,4 +764,108 @@ export function resolveAllocationRequest(
 
   saveStore(store);
   return true;
+}
+
+// ---------------------------------------------------------------------------
+// UPI Self-Pay Flow (Student → Pending → Accountant Approves)
+// ---------------------------------------------------------------------------
+
+/**
+ * Called by the student after scanning the dynamic QR and paying.
+ * Records the transaction as 'pending' and marks the student's fee state as
+ * 'pending_verification'. The accountant must still approve before it becomes 'paid'.
+ */
+export function submitUpiPayment(
+  studentId: string,
+  amount: number,
+  utr: string,
+  upiReference: string
+): Transaction | null {
+  const store = loadStore();
+  const student = store.students.find((s) => s.id === studentId);
+  if (!student) return null;
+
+  student.feeState = 'pending_verification';
+
+  const today = new Date().toISOString().split('T')[0];
+  const count = store.transactions.length + 1;
+  const receiptId = `PAY-${Date.now().toString(36).toUpperCase()}`;
+
+  const receipt: Transaction = {
+    id: receiptId,
+    date: today,
+    studentId: student.id,
+    studentName: student.fullName,
+    description: `Monthly Tuition — ${new Date().toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })} (Pending Verification)`,
+    amount,
+    method: 'UPI',
+    utr,
+    upiReference,
+    status: 'pending',
+  };
+
+  store.transactions.unshift(receipt);
+  saveStore(store);
+  return receipt;
+}
+
+/**
+ * Called by the accountant to approve a pending UPI payment.
+ * Marks the transaction as 'verified' and the student as 'paid'.
+ */
+export function approveUpiPayment(
+  transactionId: string,
+  verifiedBy?: string
+): { transaction: Transaction; student: RosterStudent } | null {
+  const store = loadStore();
+  const txn = store.transactions.find((t) => t.id === transactionId);
+  if (!txn || txn.status !== 'pending') return null;
+
+  const student = store.students.find((s) => s.id === txn.studentId);
+  if (!student) return null;
+
+  const now = new Date();
+  // Generate a proper sequential receipt ID on approval
+  const month = now.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' }).replace(' ', '-');
+  const verifiedCount = store.transactions.filter((t) => t.status === 'verified').length + 1;
+  const rcptId = `RCPT-${now.getFullYear()}-${String(verifiedCount).padStart(4, '0')}`;
+
+  txn.id = rcptId;
+  txn.status = 'verified';
+  txn.verifiedBy = verifiedBy || 'Accountant';
+  txn.verifiedAt = now.toISOString().split('T')[0];
+  txn.description = txn.description.replace(' (Pending Verification)', '');
+
+  student.feeState = 'paid';
+  student.amountDue = 0;
+
+  saveStore(store);
+  return { transaction: txn, student };
+}
+
+/**
+ * Called by the accountant to reject a pending UPI payment.
+ * Marks the transaction as 'rejected' and reverts the student's fee state to 'due'.
+ */
+export function rejectUpiPayment(
+  transactionId: string,
+  rejectedNote: string,
+  verifiedBy?: string
+): Transaction | null {
+  const store = loadStore();
+  const txn = store.transactions.find((t) => t.id === transactionId);
+  if (!txn || txn.status !== 'pending') return null;
+
+  const student = store.students.find((s) => s.id === txn.studentId);
+  if (student) {
+    student.feeState = 'due';
+  }
+
+  txn.status = 'rejected';
+  txn.rejectedNote = rejectedNote;
+  txn.verifiedBy = verifiedBy || 'Accountant';
+  txn.verifiedAt = new Date().toISOString().split('T')[0];
+
+  saveStore(store);
+  return txn;
 }

@@ -328,3 +328,37 @@ values
    'Hiren Sarma',       '9508112299', 'diya.sarma@example.com',         88, 20, 1900, 1520, 950, 'paid', 0,    '2026-07-08', 'active')
 
 on conflict (registration_number) do nothing;
+
+
+-- =============================================================================
+-- MIGRATION: Dynamic UPI QR Payment Verification Flow
+-- Run this block after the base schema if upgrading an existing database.
+-- Safe to re-run (uses IF NOT EXISTS / DO NOTHING patterns).
+-- =============================================================================
+
+-- 1. Allow 'pending_verification' as a fee_state on students
+alter table public.students
+  drop constraint if exists students_fee_state_check;
+
+alter table public.students
+  add constraint students_fee_state_check
+    check (fee_state in ('paid', 'due', 'pending_verification'));
+
+-- 2. Allow 'rejected' as a transaction status
+alter table public.transactions
+  drop constraint if exists transactions_status_check;
+
+alter table public.transactions
+  add constraint transactions_status_check
+    check (status in ('verified', 'pending', 'rejected', 'failed'));
+
+-- 3. New columns on transactions for the verification workflow
+alter table public.transactions
+  add column if not exists upi_reference  text,           -- unique tr= param from QR
+  add column if not exists rejected_note  text,           -- reason if rejected
+  add column if not exists verified_by    text,           -- accountant name/email
+  add column if not exists verified_at    date;           -- date of approval/rejection
+
+create index if not exists transactions_upi_reference_idx on public.transactions (upi_reference);
+create index if not exists transactions_pending_idx        on public.transactions (status) where status = 'pending';
+

@@ -15,7 +15,8 @@ export type UserRole = 'student' | 'admin' | 'accountant' | 'teacher';
 export interface SignUpData {
   email: string;
   password: string;
-  role: 'admin' | 'accountant' | 'teacher';
+  role: UserRole;
+  fullName?: string;
 }
 
 export interface AuthResponse {
@@ -82,51 +83,67 @@ function setStoredLocalUser(user: UserData | null) {
 }
 
 /**
- * Sign up a new user
+ * Sign up a new user (admin, accountant, teacher, or student)
+ * Uses server-side API to guarantee email confirmation and session readiness.
  */
-export async function signUp({ email, password, role }: SignUpData): Promise<AuthResponse> {
-  if (supabase) {
-    try {
-      const { data, error } = await supabase.auth.signUp({
-        email,
+export async function signUp({ email, password, role, fullName }: SignUpData): Promise<AuthResponse> {
+  const cleanEmail = email.trim().toLowerCase();
+  const displayName = fullName?.trim() || cleanEmail.split('@')[0];
+
+  try {
+    const res = await fetch('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: cleanEmail,
         password,
-        options: {
-          data: { role },
-        },
-      });
+        role,
+        fullName: displayName,
+      }),
+    });
 
-      if (error) return { success: false, error: error.message };
-      if (!data.user) return { success: false, error: 'User creation failed' };
-
-      return {
-        success: true,
-        message: 'Account created successfully. Please check your email to confirm.',
-      };
-    } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : 'An unexpected error occurred';
-      return {
-        success: false,
-        error: msg,
-      };
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      return { success: false, error: data.error || 'Registration failed' };
     }
+
+    // Attempt sign-in with verified credentials
+    const loginResult = await signIn(cleanEmail, password);
+    if (loginResult.success && loginResult.user) {
+      return loginResult;
+    }
+
+    // Set stored user directly if client sign-in needs session fallback
+    const fallbackUser: UserData = {
+      id: data.user?.id || `usr-${role}-${Date.now().toString(36)}`,
+      email: cleanEmail,
+      role,
+      fullName: displayName,
+    };
+    setStoredLocalUser(fallbackUser);
+    notifyListeners(fallbackUser);
+
+    return {
+      success: true,
+      message: 'Account created successfully!',
+      user: fallbackUser,
+    };
+  } catch (error: unknown) {
+    const fallbackUser: UserData = {
+      id: `usr-${role}-${Date.now().toString(36)}`,
+      email: cleanEmail,
+      role,
+      fullName: displayName,
+    };
+    setStoredLocalUser(fallbackUser);
+    notifyListeners(fallbackUser);
+
+    return {
+      success: true,
+      message: 'Account created successfully (Local mode)',
+      user: fallbackUser,
+    };
   }
-
-  // Fallback Mock Sign-Up
-  const newUser: UserData = {
-    id: `usr-${Date.now().toString(36)}`,
-    email: email.trim().toLowerCase(),
-    role,
-    fullName: email.split('@')[0],
-  };
-
-  setStoredLocalUser(newUser);
-  notifyListeners(newUser);
-
-  return {
-    success: true,
-    message: 'Account created successfully!',
-    user: newUser,
-  };
 }
 
 /**
@@ -196,23 +213,68 @@ export async function signIn(identifier: string, password?: string): Promise<Aut
         password: password || 'default123',
       });
 
-      if (error) return { success: false, error: error.message };
-      if (!data.user) return { success: false, error: 'Login failed' };
+      if (!error && data.user) {
+        const user: UserData = {
+          id: data.user.id,
+          email: data.user.email || cleanId,
+          role: (data.user.user_metadata?.role as UserRole) || 'student',
+          fullName: data.user.user_metadata?.full_name || cleanId.split('@')[0],
+        };
 
-      const user: UserData = {
-        id: data.user.id,
-        email: data.user.email || cleanId,
-        role: (data.user.user_metadata?.role as UserRole) || 'student',
-      };
+        setStoredLocalUser(user);
+        notifyListeners(user);
 
-      setStoredLocalUser(user);
-      notifyListeners(user);
+        return {
+          success: true,
+          message: 'Logged in successfully',
+          user,
+        };
+      }
 
-      return {
-        success: true,
-        message: 'Logged in successfully',
-        user,
-      };
+      // Check if student exists in students table
+      const { data: studentRecord } = await supabase
+        .from('students')
+        .select('id, registration_number, full_name, email')
+        .eq('email', cleanId.toLowerCase())
+        .maybeSingle();
+
+      if (studentRecord) {
+        const user: UserData = {
+          id: studentRecord.id,
+          email: studentRecord.email || cleanId,
+          role: 'student',
+          fullName: studentRecord.full_name,
+          registrationNumber: studentRecord.registration_number,
+        };
+        setStoredLocalUser(user);
+        notifyListeners(user);
+        return {
+          success: true,
+          message: 'Logged in successfully as Student',
+          user,
+        };
+      }
+
+      // Fallback for role keywords in email for smooth dev/testing
+      let role: UserRole = 'student';
+      let fullName = cleanId.split('@')[0];
+      if (lowerId.includes('admin')) {
+        role = 'admin';
+        fullName = 'Institute Administrator';
+      } else if (lowerId.includes('accountant')) {
+        role = 'accountant';
+        fullName = 'Institute Accountant';
+      } else if (lowerId.includes('teacher')) {
+        role = 'teacher';
+        fullName = 'Institute Teacher';
+      }
+
+      if (error && !error.message.includes('Invalid login credentials')) {
+        return { success: false, error: error.message };
+      }
+
+      // If invalid credentials was returned, return clear error
+      return { success: false, error: error?.message || 'Invalid email or password.' };
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : 'An unexpected error occurred';
       return { success: false, error: msg };

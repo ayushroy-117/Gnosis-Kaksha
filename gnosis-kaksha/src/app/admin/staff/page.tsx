@@ -68,7 +68,12 @@ export default function AdminStaffPage() {
     }
     setIsCreating(true);
     try {
-      const result = await signUp({ email: form.email.trim(), password: form.password, role: form.role });
+      const result = await signUp({
+        email: form.email.trim(),
+        password: form.password,
+        role: form.role,
+        fullName: form.name.trim(),
+      });
       if (result.success) {
         const newStaff: StaffAccount = {
           id: `staff-${Date.now().toString(36)}`,

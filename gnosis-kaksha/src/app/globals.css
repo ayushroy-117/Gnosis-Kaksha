@@ -86,3 +86,114 @@ select:-webkit-autofill {
   -webkit-box-shadow: 0 0 0px 1000px #ffffff inset !important;
   transition: background-color 5000s ease-in-out 0s;
 }
+
+/* ═══════════════════════════════════════════════════════
+   PRINT STYLES — Single-Page Official Fee Receipt
+═══════════════════════════════════════════════════════ */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 8mm 10mm;
+  }
+
+  /* Force exact colors, borders and backgrounds in print */
+  *,
+  *::before,
+  *::after {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+
+  /* Hide all web UI chrome, navigation, footers, buttons and toasts */
+  nav,
+  footer,
+  aside,
+  header,
+  .print\:hidden,
+  [data-no-print],
+  button,
+  .toaster,
+  [data-sonner-toaster],
+  div[role="status"],
+  div[role="region"][aria-label*="Notifications"],
+  div[role="region"][aria-label*="Toaster"] {
+    display: none !important;
+  }
+
+  html,
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  main {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    background: #ffffff !important;
+  }
+
+  /* Prevent page breaks inside the receipt container and isolate receipt */
+  body:has(.receipt-single-page) * {
+    visibility: hidden;
+  }
+
+  body:has(.receipt-single-page) .receipt-single-page,
+  body:has(.receipt-single-page) .receipt-single-page * {
+    visibility: visible;
+  }
+
+  body:has(.receipt-single-page) .receipt-single-page {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    right: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: 275mm !important;
+    margin: 0 auto !important;
+    box-shadow: none !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+  }
+
+  .receipt-single-page {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+    margin: 0 auto !important;
+    max-width: 100% !important;
+    box-shadow: none !important;
+    border: 2px solid #000000 !important;
+  }
+
+  /* Modal backdrop when printing becomes clean full page */
+  .receipt-modal-backdrop {
+    position: static !important;
+    background: transparent !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+  }
+
+  .receipt-modal-card {
+    box-shadow: none !important;
+    border: none !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    max-height: none !important;
+  }
+}
+

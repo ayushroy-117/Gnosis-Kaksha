@@ -191,7 +191,7 @@ export function LoginForm({ onSwitchToRegister, onLoginSuccess }: LoginFormProps
             onClick={onSwitchToRegister}
             className="text-[#1295D8] hover:underline font-medium"
           >
-            Create Staff Account
+            Create Account
           </button>
         </p>
       </form>

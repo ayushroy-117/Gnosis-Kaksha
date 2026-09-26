@@ -16,8 +16,8 @@ interface AuthContextType {
   user: UserData | null;
   loading: boolean;
   isAuthenticated: boolean;
-  signIn: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
-  signUp: (email: string, password: string, role: 'admin' | 'accountant') => Promise<{ success: boolean; error?: string }>;
+  signIn: (email: string, password?: string) => Promise<{ success: boolean; error?: string }>;
+  signUp: (email: string, password: string, role: UserRole, fullName?: string) => Promise<{ success: boolean; error?: string }>;
   signOut: () => Promise<void>;
 }
 
@@ -52,7 +52,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     };
   }, []);
 
-  const signIn = async (email: string, password: string) => {
+  const signIn = async (email: string, password?: string) => {
     const result = await authSignIn(email, password);
     
     if (result.success) {
@@ -66,12 +66,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
     };
   };
 
-  const signUp = async (email: string, password: string, role: 'admin' | 'accountant') => {
-    const result = await authSignUp({ email, password, role });
+  const signUp = async (email: string, password: string, role: UserRole, fullName?: string) => {
+    const result = await authSignUp({ email, password, role, fullName });
 
     if (result.success) {
-      // Note: User won't be immediately available until email is confirmed
-      // But we can set it after confirmation or on next login
       const currentUser = await getCurrentUser();
       setUser(currentUser);
     }

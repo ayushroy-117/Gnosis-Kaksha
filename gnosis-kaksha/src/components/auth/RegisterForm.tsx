@@ -12,10 +12,11 @@ import { useAuth } from '@/hooks/useAuth';
 
 // Validation schema
 const registerSchema = z.object({
+  fullName: z.string().min(2, 'Full name is required (min 2 characters)'),
   email: z.string().email('Valid email is required'),
   password: z.string().min(6, 'Password must be at least 6 characters'),
   confirmPassword: z.string().min(6, 'Confirm password is required'),
-  role: z.enum(['admin', 'accountant']).refine(val => val, { message: 'Please select a role' }),
+  role: z.enum(['admin', 'accountant', 'teacher', 'student']).refine(val => val, { message: 'Please select a role' }),
 }).refine((data) => data.password === data.confirmPassword, {
   message: 'Passwords do not match',
   path: ['confirmPassword'],
@@ -40,6 +41,9 @@ export function RegisterForm({ onSwitchToLogin, onRegisterSuccess }: RegisterFor
     formState: { errors },
   } = useForm<RegisterFormData>({
     resolver: zodResolver(registerSchema),
+    defaultValues: {
+      role: 'student',
+    },
   });
 
   const onSubmit = async (data: RegisterFormData) => {
@@ -47,7 +51,7 @@ export function RegisterForm({ onSwitchToLogin, onRegisterSuccess }: RegisterFor
     setGeneralError(null);
     
     try {
-      const result = await signUp(data.email, data.password, data.role);
+      const result = await signUp(data.email, data.password, data.role, data.fullName);
       
       if (!result.success) {
         setGeneralError(result.error || 'Registration failed. Please try again.');
@@ -58,6 +62,10 @@ export function RegisterForm({ onSwitchToLogin, onRegisterSuccess }: RegisterFor
       onRegisterSuccess?.();
       if (data.role === 'accountant') {
         router.push('/accountant/dashboard');
+      } else if (data.role === 'teacher') {
+        router.push('/teacher/dashboard');
+      } else if (data.role === 'student') {
+        router.push('/student/dashboard');
       } else {
         router.push('/admin/dashboard');
       }
@@ -78,6 +86,14 @@ export function RegisterForm({ onSwitchToLogin, onRegisterSuccess }: RegisterFor
       )}
 
       <Input
+        label="Full Name"
+        type="text"
+        placeholder="e.g. Rahul Sen"
+        error={errors.fullName?.message}
+        {...register('fullName')}
+      />
+
+      <Input
         label="Email Address"
         type="email"
         placeholder="you@example.com"
@@ -86,11 +102,13 @@ export function RegisterForm({ onSwitchToLogin, onRegisterSuccess }: RegisterFor
       />
 
       <Select
-        label="Role"
+        label="Account Role"
         error={errors.role?.message}
         options={[
-          { value: 'admin', label: 'Admin' },
+          { value: 'student', label: 'Student' },
+          { value: 'teacher', label: 'Teacher / Faculty' },
           { value: 'accountant', label: 'Accountant' },
+          { value: 'admin', label: 'Administrator' },
         ]}
         {...register('role')}
       />

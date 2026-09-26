@@ -126,6 +126,14 @@ export async function POST(request: NextRequest) {
           tuitionAfterScholarship: billing.tuitionAfterScholarship,
           mandatoryCharges: billing.mandatoryCharges,
           finalPayable: billing.finalPayable,
+          admissionDate: today,
+        },
+        receipt: {
+          id: `RCPT-${Date.now()}`,
+          utr: upiUtr.trim(),
+          amount: billing.finalPayable,
+          date: today,
+          status: 'pending',
         },
       },
       { status: 201 }

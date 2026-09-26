@@ -26,6 +26,7 @@ import { calculateBill, calculateScholarship, SUBJECT_FEES } from '@/lib/fees';
 import { useAuth } from '@/hooks/useAuth';
 import { useRouter } from 'next/navigation';
 import { QRCodeSVG } from 'qrcode.react';
+import { ReceiptSheet } from '@/components/dashboard/OfficialFeeReceiptModal';
 import toast from 'react-hot-toast';
 
 // Validation schemas for each step
@@ -224,111 +225,102 @@ export function AdmissionForm() {
     return (SUBJECTS_BY_CLASS[classValue] || []).map((s) => ({ value: s, label: s }));
   };
 
-  // SUCCESS CONFIRMATION MODAL & PRINTABLE SLIP
+  // SUCCESS CONFIRMATION & OFFICIAL 1-PAGE FEE RECEIPT
   if (successData) {
+    const paidAmount = Number(
+      successData.receipt?.amount ??
+      successData.student?.totalPaid ??
+      2750
+    );
+
+    const classNum = parseInt(formData.currentClass || String(successData.student.classNumber || 10));
+    const stream =
+      classNum >= 11
+        ? formData.subjects?.includes('Physics')
+          ? 'Science'
+          : 'Arts'
+        : null;
+
     return (
-      <div className="max-w-3xl mx-auto space-y-6">
-        <Card className="p-8 border-2 border-[#10B981] bg-white shadow-lg print:border-none print:shadow-none">
-          {/* Header */}
-          <div className="text-center pb-6 border-b border-gray-200">
-            <div className="mx-auto w-16 h-16 rounded-full bg-green-100 flex items-center justify-center text-[#10B981] mb-3">
-              <CheckCircle className="w-10 h-10" />
-            </div>
-            <span className="inline-flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-green-700 bg-green-50 px-3 py-1 rounded-full mb-2">
-              <ShieldCheck size={14} /> Admission Application Confirmed
-            </span>
-            <h1 className="text-2xl font-black text-[#1A2B4A]">GNOSIS KAKSHA</h1>
-            <p className="text-xs font-extrabold uppercase tracking-widest text-[#1295D8] mt-0.5">“A PLACE FOR EXCELLENCE”</p>
-            <p className="text-[11px] text-[#718096] mt-1">Main Road, Ramkrishna Nagar, Assam – 788713 • www.gnosiskaksha.cloud</p>
-            <p className="text-sm font-semibold text-[#1A2B4A] mt-2">Official Admission Slip &amp; Fee Acknowledgment</p>
-          </div>
-
-          {/* Registration Number Badge */}
-          <div className="my-6 p-4 rounded-xl bg-gradient-to-r from-[#CDE6F7] to-[#EBF5FB] border border-[#50B4F2] flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-[#2E5EAA]">Student Registration Number</p>
-              <p className="text-2xl font-mono font-black text-[#1A2B4A]">{successData.student.registrationNumber}</p>
-              <p className="text-xs text-gray-600">Keep this number safe for student portal login and all exams.</p>
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                navigator.clipboard.writeText(successData.student.registrationNumber);
-                toast.success('Registration number copied!');
-              }}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-[#1295D8] text-xs font-semibold text-[#1295D8] hover:bg-[#1295D8] hover:text-white transition"
-            >
-              <Copy size={14} /> Copy Reg. No
-            </button>
-          </div>
-
-          {/* Details Grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm py-4 border-b border-gray-200">
-            <div>
-              <span className="text-xs text-gray-500 uppercase font-semibold">Applicant Name</span>
-              <p className="font-bold text-[#1A2B4A]">{successData.student.fullName}</p>
-            </div>
-            <div>
-              <span className="text-xs text-gray-500 uppercase font-semibold">Class</span>
-              <p className="font-bold text-[#1A2B4A]">Class {successData.student.classNumber}</p>
-            </div>
-            <div>
-              <span className="text-xs text-gray-500 uppercase font-semibold">Date of Admission</span>
-              <p className="font-bold text-[#1A2B4A]">{successData.student.admissionDate}</p>
-            </div>
-            <div>
-              <span className="text-xs text-gray-500 uppercase font-semibold">Receipt Number</span>
-              <p className="font-mono font-semibold text-[#1A2B4A]">{successData.receipt.id}</p>
-            </div>
-            <div>
-              <span className="text-xs text-gray-500 uppercase font-semibold">UPI UTR Number</span>
-              <p className="font-mono font-semibold text-green-700">{successData.receipt.utr}</p>
-            </div>
-            <div>
-              <span className="text-xs text-gray-500 uppercase font-semibold">Amount Paid</span>
-              <p className="font-bold text-lg text-[#1295D8]">₹{successData.receipt.amount}</p>
-            </div>
-          </div>
-
-          {/* Student Login Credentials Box */}
-          <div className="my-6 p-4 rounded-lg bg-amber-50 border border-amber-200">
-            <div className="flex items-center gap-2 mb-2">
-              <GraduationCap size={18} className="text-amber-700" />
-              <h3 className="text-sm font-bold text-amber-900">Your Student Portal Login Credentials</h3>
-            </div>
-            <div className="grid sm:grid-cols-2 gap-3 text-xs">
-              <div className="bg-white p-2.5 rounded border border-amber-200">
-                <span className="text-gray-500 font-medium">Username / Login ID:</span>
-                <p className="font-mono font-bold text-[#1A2B4A] text-sm">{successData.student.registrationNumber}</p>
+      <div className="max-w-4xl mx-auto space-y-6">
+        {/* On-Screen Action & Celebration Bar (Hidden on Print) */}
+        <div className="rounded-xl border border-emerald-200 bg-white p-5 shadow-sm print:hidden">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 shrink-0">
+                <CheckCircle className="w-7 h-7" />
               </div>
-              <div className="bg-white p-2.5 rounded border border-amber-200">
-                <span className="text-gray-500 font-medium">Default Password:</span>
-                <p className="font-mono font-bold text-[#1A2B4A] text-sm">gk2026</p>
+              <div>
+                <span className="inline-flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full mb-1">
+                  <ShieldCheck size={12} /> Admission Confirmed
+                </span>
+                <h2 className="text-xl font-black text-[#1A2B4A]">
+                  Welcome, {successData.student.fullName}!
+                </h2>
+                <p className="text-xs text-[#718096]">
+                  Registration: <span className="font-mono font-bold text-[#1295D8]">{successData.student.registrationNumber}</span> · Official Receipt Generated Below
+                </p>
               </div>
             </div>
-            <p className="text-[11px] text-amber-800 mt-2">
-              You can log in to the Student Portal anytime using your Registration Number and the default password above.
-            </p>
-          </div>
 
-          {/* Action Buttons (Hidden when printing) */}
-          <div className="flex flex-wrap gap-4 pt-4 print:hidden">
-            <button
-              type="button"
-              onClick={() => window.print()}
-              className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-3 rounded-lg border-2 border-gray-300 text-gray-700 hover:bg-gray-50 font-semibold transition"
-            >
-              <Printer size={18} /> Print Confirmation Slip
-            </button>
-            <button
-              type="button"
-              onClick={handleEnterStudentPortal}
-              className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-gradient-to-r from-[#1295D8] to-[#2E5EAA] text-white hover:opacity-95 font-bold shadow-md transition"
-            >
-              Enter Student Portal <ArrowRight size={18} />
-            </button>
+            <div className="flex flex-wrap items-center gap-2.5">
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(successData.student.registrationNumber);
+                  toast.success('Registration number copied!');
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-gray-300 bg-white text-xs font-semibold text-gray-700 hover:bg-gray-50 transition"
+              >
+                <Copy size={13} /> Copy Reg. No
+              </button>
+
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="inline-flex items-center gap-2 rounded-lg bg-[#1A2B4A] hover:bg-[#2E5EAA] px-4 py-2 text-xs font-bold text-white shadow-sm transition"
+              >
+                <Printer size={15} /> Print / Save PDF Receipt
+              </button>
+
+              <button
+                type="button"
+                onClick={handleEnterStudentPortal}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-[#1295D8] to-[#2E5EAA] px-4 py-2 text-xs font-bold text-white hover:opacity-95 shadow-sm transition"
+              >
+                Enter Student Portal <ArrowRight size={14} />
+              </button>
+            </div>
           </div>
-        </Card>
+        </div>
+
+        {/* ── Official Printable Fee Receipt (Exact 1-Page A4) ── */}
+        <ReceiptSheet
+          receipt={{
+            id: successData.receipt?.id || `RCPT-2026-${successData.student.registrationNumber.slice(-4)}`,
+            date: successData.receipt?.date || successData.student.admissionDate || new Date().toISOString().split('T')[0],
+            description: `Admission — Exam Fee, Uniform Kit & First Month Advance Tuition`,
+            amount: paidAmount,
+            method: 'UPI',
+            utr: successData.receipt?.utr || formData.upiUtr || '—',
+            status: 'verified',
+          }}
+          student={{
+            fullName: successData.student.fullName || formData.fullName,
+            registrationNumber: successData.student.registrationNumber,
+            classNumber: classNum,
+            stream,
+            board: formData.board || 'SEBA',
+            parentName: formData.parentName,
+            mobile: formData.phone,
+            address: [formData.address, formData.city].filter(Boolean).join(', ') || 'Ramkrishna Nagar',
+          }}
+          copyType="STUDENT COPY"
+          credentials={{
+            username: successData.student.registrationNumber,
+            password: 'gk2026',
+          }}
+        />
       </div>
     );
   }

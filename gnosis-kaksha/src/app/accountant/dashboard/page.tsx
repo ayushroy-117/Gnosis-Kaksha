@@ -6,6 +6,7 @@ import {
   AlertTriangle,
   ArrowRight,
   CheckCircle2,
+  Hourglass,
 } from 'lucide-react';
 import { SampleDataBanner } from '@/components/dashboard/SampleDataBanner';
 import { StatCard } from '@/components/dashboard/StatCard';
@@ -22,7 +23,7 @@ export const metadata = { title: 'Finance Overview - Gnosis Kaksha' };
 
 export default function AccountantDashboardPage() {
   const { stats, transactions, defaulters, currentPeriod } = getAccountantData();
-  const recentTransactions = transactions.slice(0, 5);
+  const recentTransactions = transactions.filter((t) => t.status === 'verified').slice(0, 5);
 
   return (
     <div className="space-y-6">
@@ -49,20 +50,21 @@ export default function AccountantDashboardPage() {
           iconClasses="bg-amber-100 text-amber-600"
         />
         <StatCard
+          icon={Hourglass}
+          label="Awaiting Verification"
+          value={stats.pendingVerificationCount}
+          valueColor={stats.pendingVerificationCount > 0 ? 'text-amber-600' : 'text-gray-400'}
+          iconClasses={stats.pendingVerificationCount > 0 ? 'bg-amber-100 text-amber-600' : 'bg-gray-100 text-gray-400'}
+          sublabel="UPI payments to verify"
+        />
+        <StatCard
           icon={Receipt}
           label="Receipts Issued"
           value={stats.receiptsThisMonth}
           sublabel="This month"
         />
-        <StatCard
-          icon={AlertTriangle}
-          label="Defaulters"
-          value={stats.defaulterCount}
-          valueColor="text-[#EF4444]"
-          iconClasses="bg-red-100 text-red-600"
-          sublabel="Active, dues pending"
-        />
       </div>
+
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
         {/* Recent transactions */}
