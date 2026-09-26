@@ -474,7 +474,7 @@ export default function TeacherStudentsPage() {
             <div className="rounded-xl border border-gray-200 bg-slate-50 p-4 flex items-center gap-4">
               <div className="rounded-lg border border-slate-300 bg-white p-2 shrink-0 shadow-2xs">
                 <QRCodeSVG
-                  value={`https://gnosiskaksha.cloud/verify/${activeBarcodeStudent.registrationNumber}`}
+                  value={`https://gnosiskaksha.in/verify/${activeBarcodeStudent.registrationNumber}`}
                   size={64}
                   level="M"
                   fgColor="#0F172A"

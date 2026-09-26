@@ -196,7 +196,7 @@ export function ReceiptSheet({
                   Main Road, Ramkrishna Nagar, Cachar, Assam – 788713 &nbsp;|&nbsp; Ph: {OFFICE_PHONE_DISPLAY}
                 </p>
                 <p className="text-[9px] text-gray-600 leading-tight font-sans">
-                  Email: query@gnosiskaksha.in &nbsp;|&nbsp; Web: www.gnosiskaksha.cloud
+                  Email: query@gnosiskaksha.in &nbsp;|&nbsp; Web: www.gnosiskaksha.in
                 </p>
               </div>
             </div>
@@ -340,7 +340,7 @@ export function ReceiptSheet({
           <div className="border border-blue-200 bg-blue-50/60 p-2 text-[9.5px] font-sans flex items-center justify-between gap-4">
             <div>
               <span className="font-bold text-[#1A2B4A] uppercase text-[9px]">Student Portal Access: </span>
-              <span className="text-gray-700">www.gnosiskaksha.cloud/login</span>
+              <span className="text-gray-700">www.gnosiskaksha.in/login</span>
             </div>
             <div className="flex items-center gap-4">
               <span>Login ID: <strong className="font-mono text-[#1A2B4A]">{credentials.username}</strong></span>
@@ -357,7 +357,7 @@ export function ReceiptSheet({
           <div className="flex items-center gap-2.5">
             <div className="border border-gray-300 p-1 bg-white shrink-0">
               <QRCodeSVG
-                value={`https://gnosiskaksha.cloud/verify/receipt/${number}`}
+                value={`https://gnosiskaksha.in/verify/receipt/${number}`}
                 size={48}
                 level="M"
                 fgColor="#1A2B4A"
@@ -439,7 +439,7 @@ export function OfficialFeeReceiptModal({
     `Amount Paid: ₹${receipt.amount.toLocaleString('en-IN')} (${inWords})\n` +
     `Payment Mode: ${receipt.method}${receipt.utr ? ` (UTR: ${receipt.utr})` : ''}\n` +
     `Status: VERIFIED & CLEARED\n` +
-    `Website: www.gnosiskaksha.cloud`;
+    `Website: www.gnosiskaksha.in`;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs overflow-y-auto receipt-modal-backdrop">

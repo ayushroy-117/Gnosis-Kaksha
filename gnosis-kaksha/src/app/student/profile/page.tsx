@@ -462,7 +462,7 @@ export default function StudentProfilePage() {
                 <div className="flex flex-col items-center gap-0.5">
                   <div className="rounded-md border border-slate-300 bg-white p-1 shadow-2xs">
                     <QRCodeSVG
-                      value={`https://gnosiskaksha.cloud/verify/${profile.registrationNumber}`}
+                      value={`https://gnosiskaksha.in/verify/${profile.registrationNumber}`}
                       size={48}
                       level="M"
                       fgColor="#0F172A"
@@ -476,7 +476,7 @@ export default function StudentProfilePage() {
 
               {/* ── Bottom Strip ── */}
               <div className="relative z-10 bg-[#0F172A] px-3 py-1 flex items-center justify-between text-[7.5px] text-slate-300">
-                <span>web: gnosiskaksha.cloud</span>
+                <span>web: gnosiskaksha.in</span>
                 <span>helpline: +91 84740 20124</span>
               </div>
             </div>

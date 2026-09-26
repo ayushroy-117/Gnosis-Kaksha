@@ -370,7 +370,7 @@ export default function TeacherProfilePage() {
                 <div className="flex flex-col items-center gap-0.5">
                   <div className="rounded-md border border-slate-300 bg-white p-1 shadow-2xs">
                     <QRCodeSVG
-                      value={`https://gnosiskaksha.cloud/verify/staff/${teacher.employeeId}`}
+                      value={`https://gnosiskaksha.in/verify/staff/${teacher.employeeId}`}
                       size={48}
                       level="M"
                       fgColor="#0F172A"
@@ -384,7 +384,7 @@ export default function TeacherProfilePage() {
 
               {/* ── Bottom Strip ── */}
               <div className="relative z-10 bg-[#0F172A] px-3 py-1 flex items-center justify-between text-[7.5px] text-slate-300">
-                <span>web: www.gnosiskaksha.cloud</span>
+                <span>web: www.gnosiskaksha.in</span>
                 <span>helpline: {OFFICE_PHONE_DISPLAY}</span>
               </div>
             </div>

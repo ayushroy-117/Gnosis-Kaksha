@@ -1,6 +1,6 @@
 # Self-hosting runbook: Supabase Cloud → VPS
 
-Moves the database and auth for gnosiskaksha.cloud off the Supabase free tier
+Moves the database and auth for gnosiskaksha.in off the Supabase free tier
 onto the project VPS. The app keeps `@supabase/supabase-js`; only the URL and keys
 change. Every step below runs **on the VPS** as root unless it says otherwise.
 
@@ -46,7 +46,7 @@ Then set these in the same `.env`:
 
 | Variable | Value |
 |---|---|
-| `SITE_URL` | `https://gnosiskaksha.cloud` |
+| `SITE_URL` | `https://gnosiskaksha.in` |
 | `SUPABASE_PUBLIC_URL` / `API_EXTERNAL_URL` | `http://127.0.0.1:8000` / `http://127.0.0.1:8000/auth/v1` (not public) |
 | `DISABLE_SIGNUP` | `true` (accounts are only created server-side by the app) |
 | `ENABLE_EMAIL_AUTOCONFIRM` | `true` (no SMTP configured; the app creates confirmed users) |
@@ -93,7 +93,7 @@ In `/opt/gnosis/gnosis-kaksha/.env` (from `.env.example`):
 SUPABASE_URL=http://api-gw:8000
 SUPABASE_ANON_KEY=<ANON_KEY from /opt/supabase/.env>
 SUPABASE_SERVICE_ROLE_KEY=<SERVICE_ROLE_KEY from /opt/supabase/.env>
-NEXT_PUBLIC_SITE_URL=https://gnosiskaksha.cloud
+NEXT_PUBLIC_SITE_URL=https://gnosiskaksha.in
 ```
 
 Remove any old `NEXT_PUBLIC_SUPABASE_*` lines. The browser no longer talks to Supabase.
@@ -117,10 +117,12 @@ to run if one already exists.
 ## 7. Nginx + TLS
 
 ```bash
-cp deploy/nginx/gnosiskaksha.cloud.conf /etc/nginx/sites-available/gnosiskaksha.cloud
-ln -sf /etc/nginx/sites-available/gnosiskaksha.cloud /etc/nginx/sites-enabled/
+# 1) certificate first (served from Nginx's default site on port 80)
+certbot certonly --webroot -w /var/www/html -d gnosiskaksha.in -d www.gnosiskaksha.in
+# 2) then the site config (also redirects the retired gnosiskaksha.cloud)
+cp deploy/nginx/gnosiskaksha.in.conf /etc/nginx/sites-available/gnosiskaksha
+ln -sf /etc/nginx/sites-available/gnosiskaksha /etc/nginx/sites-enabled/
 nginx -t && systemctl reload nginx
-certbot --nginx -d gnosiskaksha.cloud -d www.gnosiskaksha.cloud
 ```
 
 If the site already has a vhost with a certificate, keep that file and only check that it
@@ -141,7 +143,7 @@ have a destination. Test a restore monthly:
 
 ## 9. Smoke test, then keep the cloud project as a fallback
 
-Run the checklist in `deploy/SMOKE_TEST.md` against https://gnosiskaksha.cloud.
+Run the checklist in `deploy/SMOKE_TEST.md` against https://gnosiskaksha.in.
 
 Leave the Supabase Cloud project **untouched for at least 7 days**. Don't pause or delete it.
 Rollback: restore the old `.env` values and `docker compose up -d`. Any writes made on the

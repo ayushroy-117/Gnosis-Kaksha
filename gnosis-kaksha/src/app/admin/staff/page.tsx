@@ -174,7 +174,7 @@ export default function AdminAccountsPage() {
               <Input
                 label="Email Address"
                 type="email"
-                placeholder="e.g. priya@gnosiskaksha.cloud"
+                placeholder="e.g. priya@gnosiskaksha.in"
                 value={form.email}
                 onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
                 required
