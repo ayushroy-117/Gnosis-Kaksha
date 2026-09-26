@@ -4,9 +4,14 @@ import { useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { Menu, X } from 'lucide-react';
+import { useAuth } from '@/hooks/useAuth';
+import { homeFor } from '@/lib/permissions';
 
 export function Navbar() {
   const [isOpen, setIsOpen] = useState(false);
+  const { user } = useAuth();
+  // Signed-in users get a link to their own portal instead of "Login".
+  const account = user ? { href: homeFor(user.role), label: 'My Dashboard' } : { href: '/auth', label: 'Login' };
 
   const toggleMenu = () => setIsOpen(!isOpen);
 
@@ -50,14 +55,17 @@ export function Navbar() {
             <Link href="/admission" className="bg-gradient-to-r from-[#1295D8] to-[#50B4F2] text-white px-6 py-2 rounded-lg hover:shadow-lg transition">
               Admission
             </Link>
-            <Link href="/auth" className="text-gray-700 hover:text-[#1295D8] font-medium transition">
-              Login
+            <Link href={account.href} className="text-gray-700 hover:text-[#1295D8] font-medium transition">
+              {account.label}
             </Link>
           </div>
 
           {/* Mobile Menu Button */}
           <button
+            type="button"
             onClick={toggleMenu}
+            aria-label={isOpen ? 'Close menu' : 'Open menu'}
+            aria-expanded={isOpen}
             className="md:hidden inline-flex items-center justify-center p-2 rounded-md text-gray-700 hover:text-[#1295D8] transition"
           >
             {isOpen ? (
@@ -116,11 +124,11 @@ export function Navbar() {
               Admission
             </Link>
             <Link
-              href="/auth"
+              href={account.href}
               className="block px-3 py-2 rounded-md text-gray-700 hover:bg-gray-100 hover:text-[#1295D8] transition font-medium"
               onClick={() => setIsOpen(false)}
             >
-              Login
+              {account.label}
             </Link>
           </div>
         </div>

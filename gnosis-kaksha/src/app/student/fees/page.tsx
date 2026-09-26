@@ -317,7 +317,7 @@ export default function StudentFeesPage() {
           )}
           <ul className="divide-y divide-gray-100">
             {feeStatus.payments.map((p) => (
-              <li key={p.id} className="flex items-center gap-4 px-6 py-4 hover:bg-gray-50 transition">
+              <li key={p.id} className="flex flex-wrap items-center gap-x-4 gap-y-3 px-4 py-4 sm:flex-nowrap sm:px-6 hover:bg-gray-50 transition">
                 <div
                   className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${
                     p.status === 'paid'
@@ -335,11 +335,11 @@ export default function StudentFeesPage() {
                     <AlertCircle size={20} />
                   )}
                 </div>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold text-[#1A2B4A]">{p.description}</p>
+                <div className="min-w-0 flex-1 basis-[calc(100%-3.5rem)] sm:basis-auto">
+                  <p className="text-sm font-semibold text-[#1A2B4A] sm:truncate">{p.description}</p>
                   <p className="text-xs text-[#718096]">
                     {formatDate(p.date)} · {p.method} ·{' '}
-                    <span className="font-mono">{p.receiptNumber || p.id}</span>
+                    <span className="font-mono break-all">{p.receiptNumber || p.id}</span>
                     {p.utr && (
                       <> · UTR: <span className="font-mono">{p.utr}</span></>
                     )}
@@ -348,7 +348,7 @@ export default function StudentFeesPage() {
                     <p className="mt-0.5 text-xs text-red-600">Not accepted: {p.rejectedNote}</p>
                   )}
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex w-full items-center justify-between gap-3 pl-14 sm:w-auto sm:justify-end sm:pl-0">
                   <span className="text-sm font-semibold text-[#1A2B4A]">{formatINR(p.amount)}</span>
                   {p.status === 'paid' ? (
                     <button

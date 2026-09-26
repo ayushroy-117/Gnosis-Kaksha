@@ -214,7 +214,50 @@ export default function AccountantCollectionsPage() {
           </div>
         ) : (
           <>
-            <div className="overflow-x-auto">
+            {/* Phones: one card per submission so Approve/Reject stay on screen */}
+            <ul className="divide-y divide-gray-100 md:hidden">
+              {pendingVerifications.map((txn) => {
+                const stu = byId.get(txn.studentId);
+                return (
+                  <li key={txn.id} className="space-y-3 px-4 py-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-semibold text-[#1A2B4A]">{txn.studentName}</p>
+                        <p className="text-xs font-mono text-[#718096]">{stu?.registrationNumber ?? txn.registrationNumber ?? '—'}</p>
+                      </div>
+                      <p className="shrink-0 text-base font-bold text-[#1A2B4A]">{formatINR(txn.amount)}</p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-[#4A5568]">
+                      {txn.purpose === 'admission' ? <Badge tone="blue">New admission</Badge> : <Badge tone="gray">Tuition</Badge>}
+                      <span>{formatDate(txn.date)}</span>
+                    </div>
+                    <p className="text-xs text-[#718096]">
+                      UPI transaction ID{' '}
+                      <span className="break-all font-mono text-sm font-semibold text-[#1A2B4A]">{txn.utr || '—'}</span>
+                    </p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleApprove(txn)}
+                        disabled={approvingId !== null}
+                        className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-green-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-green-700 disabled:opacity-50"
+                      >
+                        <ShieldCheck size={15} /> {approvingId === txn.id ? 'Approving…' : 'Approve'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setRejectTarget(txn); setRejectedNote(''); }}
+                        disabled={approvingId !== null}
+                        className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-red-500 px-3 py-2 text-sm font-semibold text-white transition hover:bg-red-600 disabled:opacity-50"
+                      >
+                        <XCircle size={15} /> Reject
+                      </button>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+            <div className="hidden overflow-x-auto md:block">
               <table className="w-full min-w-[820px] text-sm">
                 <thead>
                   <tr className="border-b border-gray-100 text-left text-xs font-semibold uppercase tracking-wide text-[#718096]">
