@@ -7,7 +7,7 @@ import {
 } from '@/lib/whatsapp';
 import { requirePermission } from '@/lib/authz';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { getRoster } from '@/lib/server/institute';
+import { getRoster, staffBranchScope } from '@/lib/server/institute';
 import { getPaymentSettings } from '@/lib/server/settings';
 import type { RosterStudent } from '@/lib/institute-data';
 
@@ -30,7 +30,9 @@ export async function GET(req: NextRequest) {
     const regNo = searchParams.get('regNo');
 
     const db = createAdminClient();
-    const [allStudents, { upiId }] = await Promise.all([getRoster(db), getPaymentSettings(db)]);
+    const [roster, { upiId }] = await Promise.all([getRoster(db), getPaymentSettings(db)]);
+    const scopeBranch = staffBranchScope(auth.user);
+    const allStudents = scopeBranch ? roster.filter((s) => s.branchId === scopeBranch) : roster;
     const pendingStudents = allStudents.filter(
       (s) => s.status === 'active' && s.feeState === 'due' && s.amountDue > 0
     );
@@ -126,7 +128,9 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const db = createAdminClient();
-    const [allStudents, { upiId }] = await Promise.all([getRoster(db), getPaymentSettings(db)]);
+    const [roster, { upiId }] = await Promise.all([getRoster(db), getPaymentSettings(db)]);
+    const scopeBranch = staffBranchScope(auth.user);
+    const allStudents = scopeBranch ? roster.filter((s) => s.branchId === scopeBranch) : roster;
 
     // ── Single Student Reminder ──────────────────────────────────────────────
     if (!body.batch) {

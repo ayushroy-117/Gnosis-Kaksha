@@ -11,6 +11,7 @@ const phone = z.string().trim().regex(/^(\+91[\s-]?)?[6-9]\d{9}$/, 'Enter a vali
 
 const admissionSchema = z
   .object({
+    branchId: z.string({ error: 'Choose the branch you are applying to' }).uuid('Choose the branch you are applying to'),
     fullName: z.string().trim().min(2, 'Full name is required').max(120),
     email: z.string().trim().toLowerCase().email('Enter a valid email'),
     password: z.string().min(8, 'Password must be at least 8 characters').max(128),
@@ -74,6 +75,11 @@ export async function POST(request: NextRequest) {
   };
 
   try {
+    const { data: branch } = await db.from('branches').select('id, is_active').eq('id', d.branchId).maybeSingle();
+    if (!branch?.is_active) {
+      return NextResponse.json({ error: 'Choose one of the listed branches.', field: 'branchId' }, { status: 400 });
+    }
+
     const { count: utrUsed } = await db
       .from('transactions')
       .select('id', { count: 'exact', head: true })
@@ -117,6 +123,7 @@ export async function POST(request: NextRequest) {
     const { data: student, error: stuErr } = await db
       .from('students')
       .insert({
+        branch_id: d.branchId,
         full_name: d.fullName,
         gender: d.gender || null,
         dob: d.dob,

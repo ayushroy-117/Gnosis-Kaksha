@@ -11,6 +11,9 @@ export interface SessionUser {
   fullName: string;
   studentId: string | null;
   registrationNumber: string | null;
+  /** Staff branch (teachers always have one; null = all branches). Students: their student record's branch. */
+  branchId: string | null;
+  branchName: string | null;
 }
 
 /**
@@ -34,13 +37,14 @@ export async function getSessionUser(): Promise<SessionUser | null> {
   const db = createAdminClient();
   const { data: profile } = await db
     .from('profiles')
-    .select('id, role, full_name, email, student_id, is_active, students(registration_number)')
+    .select('id, role, full_name, email, student_id, is_active, branch_id, staff_branch:branches(name), students(registration_number, branch_id, branches(name))')
     .eq('id', authUserId)
     .maybeSingle();
 
   if (!profile || !profile.is_active) return null;
 
-  const student = profile.students as { registration_number?: string } | null;
+  const student = profile.students as unknown as { registration_number?: string; branch_id?: string; branches?: { name: string } | null } | null;
+  const staffBranch = profile.staff_branch as unknown as { name: string } | null;
   return {
     id: profile.id,
     email: profile.email || authEmail,
@@ -48,6 +52,8 @@ export async function getSessionUser(): Promise<SessionUser | null> {
     fullName: profile.full_name || authEmail.split('@')[0],
     studentId: profile.student_id,
     registrationNumber: student?.registration_number ?? null,
+    branchId: student?.branch_id ?? profile.branch_id ?? null,
+    branchName: student?.branches?.name ?? staffBranch?.name ?? null,
   };
 }
 

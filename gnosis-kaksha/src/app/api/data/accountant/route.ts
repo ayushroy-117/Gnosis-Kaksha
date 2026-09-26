@@ -10,7 +10,7 @@ export async function GET() {
   const auth = await requirePermission('view_financials');
   if (!auth.ok) return auth.response;
   try {
-    return NextResponse.json(await buildAccountantData(createAdminClient()));
+    return NextResponse.json(await buildAccountantData(createAdminClient(), auth.user));
   } catch (err) {
     return serverError('data/accountant', err, 'Could not load financial data.');
   }

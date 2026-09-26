@@ -1,6 +1,6 @@
 import {
   LayoutDashboard, Users, UserPlus, Megaphone, ShieldCheck, Wallet, Receipt, BarChart3,
-  ClipboardCheck, SlidersHorizontal, BookOpen, FileText, CalendarCheck, UserCheck, User, Bell, QrCode,
+  ClipboardCheck, SlidersHorizontal, BookOpen, FileText, CalendarCheck, UserCheck, User, Bell, QrCode, Building2,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { UserRole } from '@/lib/permissions';
@@ -36,6 +36,7 @@ export const NAVIGATION: Record<UserRole, DashboardNavGroup[]> = {
         { label: 'Admissions', href: '/admin/admissions', icon: UserPlus },
         { label: 'Notices', href: '/admin/notices', icon: Megaphone },
         { label: 'Accounts & Permissions', href: '/admin/staff', icon: ShieldCheck },
+        { label: 'Branches', href: '/admin/branches', icon: Building2 },
         { label: 'Payment Settings', href: '/admin/settings', icon: QrCode },
       ],
     },

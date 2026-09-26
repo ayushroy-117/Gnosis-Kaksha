@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { requirePermission, serverError } from '@/lib/authz';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { mapTransaction } from '@/lib/server/institute';
+import { mapTransaction, studentInScope } from '@/lib/server/institute';
 
 const bodySchema = z.discriminatedUnion('action', [
   z.object({ transactionId: z.string().min(1).max(100), action: z.literal('approve') }),
@@ -29,6 +29,9 @@ export async function POST(request: NextRequest) {
 
   try {
     const db = createAdminClient();
+    const { data: txnRow } = await db.from('transactions').select('student_id').eq('id', body.transactionId).maybeSingle();
+    if (!txnRow) return NextResponse.json({ error: 'Transaction not found.' }, { status: 404 });
+    if (!(await studentInScope(db, auth.user, txnRow.student_id))) return NextResponse.json({ error: 'That student is at another branch.' }, { status: 403 });
     const { data, error } = await db.rpc('review_payment', {
       p_transaction_id: body.transactionId,
       p_action: body.action,

@@ -11,6 +11,7 @@ export const dynamic = 'force-dynamic';
 function mapRecord(r: any) {
   return {
     id: r.id,
+    branchId: r.branch_id,
     date: r.date,
     classNumber: r.class_number,
     subject: r.subject,
@@ -36,6 +37,12 @@ export async function GET(request: NextRequest) {
     const db = createAdminClient();
     const scope = await teacherScopeFor(db, auth.user);
     let q = db.from('attendance_records').select('*').order('date', { ascending: false }).limit(100);
+    // Teachers: always their own branch. Admin: optional ?branchId= filter.
+    const branchId = auth.user.role === 'teacher' ? auth.user.branchId : sp.get('branchId');
+    if (auth.user.role === 'teacher' && !branchId) {
+      return NextResponse.json({ error: 'Your account has no branch yet. Ask the admin to set it.' }, { status: 403 });
+    }
+    if (branchId) q = q.eq('branch_id', branchId);
     const date = sp.get('date');
     const classNumber = Number(sp.get('classNumber')) || null;
     const subject = sp.get('subject');
@@ -64,6 +71,7 @@ const saveSchema = z.object({
   classNumber: z.coerce.number().int().min(1).max(12),
   subject: z.string().trim().min(1).max(60),
   mode: z.enum(['manual', 'biometric']).default('manual'),
+  branchId: z.string().uuid().optional(),
   entries: z.array(entrySchema).min(1, 'No students to record attendance for.').max(500),
 });
 
@@ -83,10 +91,28 @@ export async function POST(request: NextRequest) {
 
   try {
     const db = createAdminClient();
+    const branchId = auth.user.role === 'teacher' ? auth.user.branchId : r.branchId;
+    if (!branchId) {
+      return NextResponse.json(
+        { error: auth.user.role === 'teacher' ? 'Your account has no branch yet. Ask the admin to set it.' : 'Choose a branch.' },
+        { status: 400 }
+      );
+    }
+    // Every student in the register must belong to that branch.
+    const { data: inBranch, error: sErr } = await db
+      .from('students')
+      .select('id')
+      .eq('branch_id', branchId)
+      .in('id', r.entries.map((e) => e.studentId));
+    if (sErr) throw sErr;
+    if ((inBranch ?? []).length !== new Set(r.entries.map((e) => e.studentId)).size) {
+      return NextResponse.json({ error: 'Some students in this register are not at this branch.' }, { status: 400 });
+    }
     if (!canTeach(await teacherScopeFor(db, auth.user), r.subject, r.classNumber)) {
       return NextResponse.json({ error: `You are not assigned to teach ${r.subject} for Class ${r.classNumber}. Ask the admin to update your subjects.` }, { status: 403 });
     }
     const row = {
+      branch_id: branchId,
       date: r.date,
       class_number: r.classNumber,
       subject: r.subject,
@@ -103,6 +129,7 @@ export async function POST(request: NextRequest) {
     const { data: existing } = await db
       .from('attendance_records')
       .select('id')
+      .eq('branch_id', branchId)
       .eq('date', r.date)
       .eq('class_number', r.classNumber)
       .ilike('subject', r.subject)

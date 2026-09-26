@@ -15,7 +15,7 @@ export async function GET() {
     const db = createAdminClient();
     const { data, error } = await db
       .from('profiles')
-      .select('id, role, full_name, email, is_active, created_at, student_id, students(registration_number)')
+      .select('id, role, full_name, email, is_active, created_at, student_id, branch_id, branches(name), students(registration_number, branches(name))')
       .order('role')
       .order('created_at', { ascending: false });
     if (error) throw error;
@@ -40,6 +40,11 @@ export async function GET() {
       createdAt: p.created_at,
       lastSignInAt: lastSignIn.get(p.id) ?? null,
       registrationNumber: (p.students as { registration_number?: string } | null)?.registration_number ?? null,
+      branchId: p.branch_id ?? null,
+      branchName:
+        (p.students as unknown as { branches?: { name: string } | null } | null)?.branches?.name ??
+        (p.branches as unknown as { name: string } | null)?.name ??
+        null,
       permissions: getPermissions(p.role as UserRole),
       assignments: p.role === 'teacher' ? assignmentsBy.get(p.id) ?? [] : null,
     }));
@@ -54,6 +59,7 @@ const createSchema = z.object({
   email: z.string().trim().toLowerCase().email('Enter a valid email'),
   role: z.enum(['teacher', 'accountant']),
   password: z.string().min(8, 'Temporary password must be at least 8 characters').max(128),
+  branchId: z.string().uuid().nullable().optional(),
 });
 
 // POST /api/admin/accounts — create a teacher or accountant account.
@@ -67,9 +73,17 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 });
   }
   const { fullName, email, role, password } = parsed.data;
+  const branchId = parsed.data.branchId || null;
+  if (role === 'teacher' && !branchId) {
+    return NextResponse.json({ error: 'Choose the branch this teacher works at.' }, { status: 400 });
+  }
 
   try {
     const db = createAdminClient();
+    if (branchId) {
+      const { data: b } = await db.from('branches').select('is_active').eq('id', branchId).maybeSingle();
+      if (!b?.is_active) return NextResponse.json({ error: 'Choose an active branch.' }, { status: 400 });
+    }
     const { data: created, error } = await db.auth.admin.createUser({
       email,
       password,
@@ -87,7 +101,7 @@ export async function POST(request: NextRequest) {
     // The signup trigger created a 'student' profile; set the staff role.
     const { error: roleErr } = await db
       .from('profiles')
-      .update({ role, full_name: fullName, updated_at: new Date().toISOString() })
+      .update({ role, full_name: fullName, branch_id: branchId, updated_at: new Date().toISOString() })
       .eq('id', created.user.id);
     if (roleErr) {
       await db.auth.admin.deleteUser(created.user.id);
@@ -105,6 +119,7 @@ const updateSchema = z.object({
   role: z.enum(ASSIGNABLE_ROLES as [UserRole, ...UserRole[]]).optional(),
   isActive: z.boolean().optional(),
   password: z.string().min(8, 'New password must be at least 8 characters').max(128).optional(),
+  branchId: z.string().uuid().nullable().optional(),
 });
 
 // PATCH /api/admin/accounts — change role, (de)activate, or reset password.
@@ -116,14 +131,14 @@ export async function PATCH(request: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 });
   }
-  const { id, role, isActive, password } = parsed.data;
-  if (role === undefined && isActive === undefined && password === undefined) {
+  const { id, role, isActive, password, branchId } = parsed.data;
+  if (role === undefined && isActive === undefined && password === undefined && branchId === undefined) {
     return NextResponse.json({ error: 'Nothing to update.' }, { status: 400 });
   }
 
   try {
     const db = createAdminClient();
-    const { data: target } = await db.from('profiles').select('id, role, student_id').eq('id', id).maybeSingle();
+    const { data: target } = await db.from('profiles').select('id, role, student_id, branch_id').eq('id', id).maybeSingle();
     if (!target) return NextResponse.json({ error: 'Account not found.' }, { status: 404 });
 
     if (target.role === 'admin' && (role !== undefined || isActive === false)) {
@@ -131,6 +146,19 @@ export async function PATCH(request: NextRequest) {
     }
     if (role && role !== 'student' && target.student_id) {
       return NextResponse.json({ error: 'This account is linked to a student record and must stay a student.' }, { status: 400 });
+    }
+
+    if (branchId !== undefined && target.student_id) {
+      return NextResponse.json({ error: "A student's branch is set on their student record." }, { status: 400 });
+    }
+    const finalRole = role ?? target.role;
+    const finalBranch = branchId !== undefined ? branchId : target.branch_id;
+    if (finalRole === 'teacher' && !finalBranch) {
+      return NextResponse.json({ error: 'Teachers must belong to a branch — choose one.' }, { status: 400 });
+    }
+    if (branchId) {
+      const { data: b } = await db.from('branches').select('is_active').eq('id', branchId).maybeSingle();
+      if (!b?.is_active) return NextResponse.json({ error: 'Choose an active branch.' }, { status: 400 });
     }
 
     if (password) {
@@ -141,6 +169,7 @@ export async function PATCH(request: NextRequest) {
     const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
     if (role !== undefined) patch.role = role;
     if (isActive !== undefined) patch.is_active = isActive;
+    if (branchId !== undefined) patch.branch_id = branchId;
     const { error } = await db.from('profiles').update(patch).eq('id', id);
     if (error) throw error;
 

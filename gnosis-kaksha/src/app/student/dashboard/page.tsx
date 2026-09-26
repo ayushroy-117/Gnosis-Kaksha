@@ -58,6 +58,7 @@ export default function StudentDashboardPage() {
           Class {profile.classNumber}
           {profile.stream ? ` · ${profile.stream}` : ''} · {profile.board} · Reg.{' '}
           {profile.registrationNumber}
+          {profile.branchName ? ` · ${profile.branchName}` : ''}
         </p>
       </div>
 
@@ -221,6 +222,12 @@ export default function StudentDashboardPage() {
                 {profile.stream ? ` · ${profile.stream}` : ''}
               </dd>
             </div>
+            {profile.branchName && (
+              <div className="flex justify-between gap-3">
+                <dt className="text-[#718096]">Branch</dt>
+                <dd className="font-medium text-[#1A2B4A]">{profile.branchName}</dd>
+              </div>
+            )}
             <div className="flex justify-between gap-3">
               <dt className="text-[#718096]">Parent</dt>
               <dd className="font-medium text-[#1A2B4A]">{profile.parentName}</dd>

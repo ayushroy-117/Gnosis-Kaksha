@@ -6,6 +6,7 @@ import type { EnrollmentStatus } from '@/lib/institute-data';
 
 export interface StudentProfile {
   id: string;
+  branchName: string;
   fullName: string;
   registrationNumber: string;
   classNumber: number;

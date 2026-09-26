@@ -15,6 +15,9 @@ export interface UserData {
   fullName: string;
   studentId: string | null;
   registrationNumber: string | null;
+  /** Staff branch (null = all branches) or, for students, their record's branch. */
+  branchId: string | null;
+  branchName: string | null;
 }
 
 export interface AuthResponse {

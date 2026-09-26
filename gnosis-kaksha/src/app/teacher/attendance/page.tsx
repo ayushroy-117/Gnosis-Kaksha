@@ -30,7 +30,9 @@ function formatSavedAt(iso: string): string {
 }
 
 export default function TeacherAttendancePage() {
-  const { user } = useAuth();
+  const { user: authUser } = useAuth();
+  // /api/auth/me returns branchId/branchName (see getSessionUser); widen until UserData declares them.
+  const user = authUser;
 
   // Date state (defaults to today, YYYY-MM-DD in UTC — matches the server's future-date check)
   const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
@@ -43,10 +45,30 @@ export default function TeacherAttendancePage() {
 
   const { data, error, loading, reload } = useApi<TeacherData>('/api/data/teacher');
 
-  // Active students
+  // Branch: teachers (and any branch-bound staff) are fixed to their own branch;
+  // staff who see every branch (admin) must pick one — records are per branch.
+  const isTeacher = user?.role === 'teacher';
+  const needsBranchChoice = !!user && !isTeacher && !user.branchId;
+  const branchesApi = useApi<{ branches: { id: string; name: string }[] }>(needsBranchChoice ? '/api/branches' : null);
+  const branches = useMemo(() => branchesApi.data?.branches ?? [], [branchesApi.data]);
+  const [chosenBranch, setChosenBranch] = useState<string>('');
+  const selectedBranchId = needsBranchChoice
+    ? branches.some((b) => b.id === chosenBranch)
+      ? chosenBranch
+      : branches.length === 1
+      ? branches[0].id
+      : ''
+    : '';
+  const selectedBranchName = needsBranchChoice
+    ? branches.find((b) => b.id === selectedBranchId)?.name ?? ''
+    : user?.branchName ?? '';
+
+  // Active students (of the selected branch, when choosing one)
   const allActiveStudents = useMemo(() => {
-    return (data?.roster ?? []).filter((s) => s.status === 'active');
-  }, [data]);
+    return (data?.roster ?? []).filter(
+      (s) => s.status === 'active' && (!needsBranchChoice || (!!selectedBranchId && s.branchId === selectedBranchId))
+    );
+  }, [data, needsBranchChoice, selectedBranchId]);
 
   // Classes that have students in a subject this teacher teaches
   const scope = data?.assignments ?? null;
@@ -101,6 +123,7 @@ export default function TeacherAttendancePage() {
           date: selectedDate,
           classNumber: String(selectedClass),
           subject: selectedSubject,
+          ...(needsBranchChoice ? { branchId: selectedBranchId } : {}),
         }).toString()}`
       : null;
   const {
@@ -116,7 +139,8 @@ export default function TeacherAttendancePage() {
       (r) =>
         r.date === selectedDate &&
         r.classNumber === selectedClass &&
-        r.subject.toLowerCase() === selectedSubject.toLowerCase()
+        r.subject.toLowerCase() === selectedSubject.toLowerCase() &&
+        (!needsBranchChoice || r.branchId === selectedBranchId)
     ) ?? null;
 
   // Entries from the saved record, or everyone present by default
@@ -132,7 +156,7 @@ export default function TeacherAttendancePage() {
   }, [enrolledStudents, existingRecord]);
 
   // Unsaved edits are tied to the current selection + saved version; changing either discards them.
-  const selectionKey = `${selectedDate}|${selectedClass}|${selectedSubject}|${existingRecord?.savedAt ?? 'new'}`;
+  const selectionKey = `${selectedBranchId}|${selectedDate}|${selectedClass}|${selectedSubject}|${existingRecord?.savedAt ?? 'new'}`;
   const [draft, setDraft] = useState<{ key: string; map: EntryMap } | null>(null);
   const [savedKey, setSavedKey] = useState<string | null>(null);
   const isDirty = draft?.key === selectionKey;
@@ -195,6 +219,10 @@ export default function TeacherAttendancePage() {
 
   // Save attendance
   const handleSave = async () => {
+    if (needsBranchChoice && !selectedBranchId) {
+      toast.error('Select a branch first.');
+      return;
+    }
     if (selectedClass === null || !selectedSubject || enrolledStudents.length === 0) {
       toast.error('Select a class and subject with enrolled students first.');
       return;
@@ -217,11 +245,12 @@ export default function TeacherAttendancePage() {
           subject: selectedSubject,
           mode: 'manual',
           entries: entryList,
+          ...(needsBranchChoice ? { branchId: selectedBranchId } : {}),
         },
       });
       setRecordData({ records: [record] });
       setDraft(null);
-      setSavedKey(`${selectedDate}|${selectedClass}|${selectedSubject}|${record.savedAt}`);
+      setSavedKey(`${selectedBranchId}|${selectedDate}|${selectedClass}|${selectedSubject}|${record.savedAt}`);
       toast.success(`Attendance saved for Class ${selectedClass} — ${selectedSubject}.`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Could not save attendance.');
@@ -251,6 +280,9 @@ export default function TeacherAttendancePage() {
               <CalendarCheck size={13} /> Daily Roster
             </span>
           </div>
+          {!needsBranchChoice && selectedBranchName && (
+            <p className="mt-1 text-sm font-semibold text-[#2E5EAA]">Branch: {selectedBranchName}</p>
+          )}
           <p className="mt-1 text-sm text-[#4A5568]">
             Mark lecture attendance for enrolled students. Records are saved to the institute database and can be re-opened and corrected for any past date.
           </p>
@@ -279,7 +311,38 @@ export default function TeacherAttendancePage() {
       </div>
 
       {/* ── Selection Control Bar (Class, Subject, Date) ── */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-white p-5 rounded-2xl border border-gray-200 shadow-xs print:border-none print:p-0">
+      <div
+        className={`grid grid-cols-1 gap-4 bg-white p-5 rounded-2xl border border-gray-200 shadow-xs print:border-none print:p-0 ${
+          needsBranchChoice ? 'md:grid-cols-5' : 'md:grid-cols-4'
+        }`}
+      >
+        {/* Branch Selector (staff who see every branch) */}
+        {needsBranchChoice && (
+          <div>
+            <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-1.5">
+              Branch <span className="text-red-500">*</span>
+            </label>
+            <select
+              required
+              value={selectedBranchId}
+              onChange={(e) => setChosenBranch(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-[#0F172A] bg-white font-medium focus:outline-hidden focus:ring-2 focus:ring-[#1295D8]"
+            >
+              <option value="" disabled>
+                {branchesApi.loading ? 'Loading branches…' : 'Select a branch'}
+              </option>
+              {branches.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+            {branchesApi.error && (
+              <p className="mt-1 text-xs text-red-600">{branchesApi.error.message}</p>
+            )}
+          </div>
+        )}
+
         {/* Date Selector */}
         <div>
           <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-1.5">
@@ -424,7 +487,13 @@ export default function TeacherAttendancePage() {
       {/* ══════════════════════════════════════════════════════════
           STUDENT ATTENDANCE ROSTER TABLE
           ══════════════════════════════════════════════════════════ */}
-      {availableClasses.length === 0 ? (
+      {needsBranchChoice && !selectedBranchId ? (
+        <EmptyState
+          icon={Users}
+          title="Select a branch"
+          message="Choose a branch to load its students and attendance records."
+        />
+      ) : availableClasses.length === 0 ? (
         <EmptyState
           icon={Users}
           title="No active students"
@@ -478,7 +547,7 @@ export default function TeacherAttendancePage() {
               <div>
                 <h2 className="text-base font-black text-[#1A2B4A]">GNOSIS KAKSHA • ATTENDANCE SHEET</h2>
                 <p className="text-xs text-gray-600">
-                  Class: Class {selectedClass} | Subject: {selectedSubject} | Date: {selectedDate}
+                  {selectedBranchName ? `Branch: ${selectedBranchName} | ` : ''}Class: Class {selectedClass} | Subject: {selectedSubject} | Date: {selectedDate}
                 </p>
               </div>
               <div className="text-right text-xs">

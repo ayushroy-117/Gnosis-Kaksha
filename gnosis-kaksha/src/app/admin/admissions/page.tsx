@@ -89,6 +89,7 @@ export default function AdminAdmissionsPage() {
                         {s.fullName}
                       </h2>
                       <Badge tone="amber">Pending Approval</Badge>
+                      {s.branchName && <Badge tone="blue">{s.branchName}</Badge>}
                       <span className="text-xs font-mono bg-gray-100 text-gray-700 px-2 py-0.5 rounded">
                         {s.registrationNumber}
                       </span>

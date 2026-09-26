@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { requirePermission, serverError } from '@/lib/authz';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { getTransactions, mapStudent, mapTransaction } from '@/lib/server/institute';
+import { getRoster, getTransactions, mapStudent, mapTransaction, staffBranchScope } from '@/lib/server/institute';
 import { currentPeriodLabel } from '@/lib/institute-data';
 import { normalizeUtr, UTR_PATTERN } from '@/lib/upi';
 
@@ -16,8 +16,14 @@ export async function GET(request: NextRequest) {
     const { searchParams } = request.nextUrl;
     const status = searchParams.get('status');
     const studentId = searchParams.get('student_id') || undefined;
-    let transactions = await getTransactions(createAdminClient(), studentId);
+    const db = createAdminClient();
+    let transactions = await getTransactions(db, studentId);
     if (status) transactions = transactions.filter((t) => t.status === status);
+    const branch = staffBranchScope(auth.user);
+    if (branch) {
+      const inBranch = new Set((await getRoster(db)).filter((s) => s.branchId === branch).map((s) => s.id));
+      transactions = transactions.filter((t) => inBranch.has(t.studentId));
+    }
     return NextResponse.json({ transactions });
   } catch (err) {
     return serverError('admin/transactions GET', err, 'Could not load transactions.');
@@ -56,6 +62,8 @@ export async function POST(request: NextRequest) {
     const { data: row } = await db.from('students').select('*').eq('id', studentId).maybeSingle();
     if (!row) return NextResponse.json({ error: 'Student not found.' }, { status: 404 });
     const student = mapStudent(row);
+    const branch = staffBranchScope(auth.user);
+    if (branch && student.branchId !== branch) return NextResponse.json({ error: 'That student is at another branch.' }, { status: 403 });
 
     const id = `CTR-${Date.now().toString(36).toUpperCase()}`;
     const { error } = await db.from('transactions').insert({

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -26,6 +26,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useRouter } from 'next/navigation';
 import { upiPayUrl } from '@/lib/upi';
 import { usePaymentPayee } from '@/hooks/usePaymentPayee';
+import { useApi } from '@/hooks/useApi';
 import { QRCodeSVG } from 'qrcode.react';
 import { ReceiptSheet } from '@/components/dashboard/OfficialFeeReceiptModal';
 import toast from 'react-hot-toast';
@@ -33,6 +34,7 @@ import toast from 'react-hot-toast';
 // Validation schemas for each step
 const step1Schema = z
   .object({
+    branchId: z.string().min(1, 'Choose the branch you are applying to'),
     fullName: z.string().trim().min(2, 'Full name is required'),
     email: z.string().trim().email('Valid email is required'),
     phone: z.string().trim().regex(/^(\+91[\s-]?)?[6-9]\d{9}$/, 'Enter a valid 10-digit mobile number'),
@@ -138,6 +140,19 @@ export function AdmissionForm() {
 
   const errors = form.formState.errors as Record<string, { message?: string } | undefined>;
 
+  // Branches the applicant can choose; preselect when there is only one.
+  const { data: branchData, error: branchError, reload: reloadBranches } =
+    useApi<{ branches: { id: string; name: string; address: string | null }[] }>('/api/branches');
+  const branches = branchData?.branches ?? [];
+  const onlyBranchId = branches.length === 1 ? branches[0].id : null;
+  useEffect(() => {
+    if (onlyBranchId && !form.getValues('branchId')) {
+      form.setValue('branchId', onlyBranchId);
+      setFormData((d) => ({ ...d, branchId: onlyBranchId }));
+    }
+  }, [onlyBranchId, form]);
+  const selectedBranch = branches.find((b) => b.id === (formData.branchId || form.watch('branchId')));
+
   // Real-time bill computation for Step 6 UPI QR Code
   const billDetails = useMemo(() => {
     if (!formData.currentClass || !formData.subjects?.length) {
@@ -213,7 +228,7 @@ export function AdmissionForm() {
       } else {
         const message = resData.error || 'Failed to submit form. Please verify your details.';
         // Send the applicant back to the step that holds the offending field.
-        const stepFor: Record<string, number> = { email: 1, password: 1, phone: 1, dob: 1, fullName: 1, schoolName: 2, previousPercentage: 2, currentClass: 2, subjects: 3, pincode: 4, parentPhone: 4, address: 4 };
+        const stepFor: Record<string, number> = { branchId: 1, email: 1, password: 1, phone: 1, dob: 1, fullName: 1, schoolName: 2, previousPercentage: 2, currentClass: 2, subjects: 3, pincode: 4, parentPhone: 4, address: 4 };
         const step = resData.field ? stepFor[resData.field as string] : undefined;
         if (step && step !== currentStep) {
           setFormData(finalData);
@@ -279,7 +294,8 @@ export function AdmissionForm() {
                   Welcome, {successData.student.fullName}!
                 </h2>
                 <p className="text-xs text-[#718096]">
-                  Registration: <span className="font-mono font-bold text-[#1295D8]">{successData.student.registrationNumber}</span> · Payment
+                  Registration: <span className="font-mono font-bold text-[#1295D8]">{successData.student.registrationNumber}</span>
+                  {selectedBranch && <> · Branch: <span className="font-semibold text-[#1A2B4A]">{selectedBranch.name}</span></>} · Payment
                   awaiting verification — your official receipt is issued once the office confirms it
                 </p>
               </div>
@@ -384,6 +400,20 @@ export function AdmissionForm() {
                 <div>
                   <h2 className="text-2xl font-bold text-[#1A2B4A]">Personal Information</h2>
                   <p className="text-sm text-[#718096] mt-1">Tell us about the applicant</p>
+                </div>
+                <div>
+                  <Select
+                    label="Branch"
+                    options={branches.map((b) => ({ value: b.id, label: b.address ? `${b.name} — ${b.address}` : b.name }))}
+                    {...form.register('branchId')}
+                    error={errors.branchId?.message}
+                  />
+                  {branchError && (
+                    <p className="mt-1 text-sm text-red-600">
+                      Couldn&apos;t load branches.{' '}
+                      <button type="button" onClick={reloadBranches} className="font-semibold underline">Retry</button>
+                    </p>
+                  )}
                 </div>
                 <Input
                   label="Full Name"

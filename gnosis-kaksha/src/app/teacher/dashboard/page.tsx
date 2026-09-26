@@ -8,10 +8,14 @@ import { Badge } from '@/components/dashboard/Badge';
 import { EmptyState } from '@/components/dashboard/EmptyState';
 import { LoadingState, ErrorState } from '@/components/dashboard/PageState';
 import { useApi } from '@/hooks/useApi';
+import { useAuth } from '@/hooks/useAuth';
 import { classLabel, formatDate, type TeacherData } from '@/lib/institute-data';
 
 export default function TeacherDashboardPage() {
   const { data, error, loading, reload } = useApi<TeacherData>('/api/data/teacher');
+  const { user } = useAuth();
+  // /api/auth/me includes the staff branch (null = all branches).
+  const branchName = user?.branchName ?? null;
 
   if (loading && !data) return <LoadingState label="Loading overview…" />;
   if (error || !data) return <ErrorState message={error?.message ?? 'Could not load data.'} onRetry={reload} />;
@@ -25,7 +29,10 @@ export default function TeacherDashboardPage() {
     <div className="space-y-6">
 
       <div>
-        <h1 className="text-3xl font-bold text-[#1A2B4A]">Teacher Overview</h1>
+        <div className="flex flex-wrap items-center gap-2">
+          <h1 className="text-3xl font-bold text-[#1A2B4A]">Teacher Overview</h1>
+          {user && <Badge tone="blue">{branchName ? `Branch: ${branchName}` : 'All branches'}</Badge>}
+        </div>
         <p className="mt-1 text-[#4A5568]">Your classes, students and subject allocation requests.</p>
       </div>
 

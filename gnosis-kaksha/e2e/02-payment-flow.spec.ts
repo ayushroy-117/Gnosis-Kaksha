@@ -19,6 +19,10 @@ test('applicant submits admission with a UPI transaction ID', async ({ page }) =
   requireStaff('accountant'); // the rest of the flow needs it; don't create orphans
   await page.goto('/admission');
 
+  // Pick the first branch (preselected automatically when there is only one).
+  const branch = page.getByLabel('Branch');
+  await expect(branch.locator('option').nth(1)).toBeAttached();
+  if (!(await branch.inputValue())) await branch.selectOption({ index: 1 });
   await page.getByLabel('Full Name').fill(applicant.name);
   await page.getByLabel('Email Address').fill(applicant.email);
   await page.getByLabel('Phone / WhatsApp Number').fill('9876512345');

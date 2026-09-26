@@ -7,6 +7,7 @@ import {
   currentPeriodLabel,
   type TeachingAssignment,
   type AccountantData,
+  type Branch,
   type AdminData,
   type InstituteNotice,
   type RosterStudent,
@@ -25,6 +26,8 @@ import type { FeePayment, StudentData, StudentNotice } from '@/lib/student-data'
 export function mapStudent(r: any): RosterStudent {
   return {
     id: r.id,
+    branchId: r.branch_id,
+    branchName: r.branches?.name ?? '—',
     registrationNumber: r.registration_number,
     fullName: r.full_name,
     classNumber: r.class_number,
@@ -105,8 +108,8 @@ export function mapAllocation(r: any): SubjectAllocationRequest {
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
 function toTeacherView(s: RosterStudent): TeacherRosterStudent {
-  const { id, registrationNumber, fullName, classNumber, stream, board, subjects, parentName, mobile, status, admissionDate } = s;
-  return { id, registrationNumber, fullName, classNumber, stream, board, subjects, parentName, mobile, status, admissionDate };
+  const { id, branchId, branchName, registrationNumber, fullName, classNumber, stream, board, subjects, parentName, mobile, status, admissionDate } = s;
+  return { id, branchId, branchName, registrationNumber, fullName, classNumber, stream, board, subjects, parentName, mobile, status, admissionDate };
 }
 
 // ---------------------------------------------------------------------------
@@ -120,7 +123,7 @@ async function must<T>(p: PromiseLike<{ data: T | null; error: unknown }>): Prom
 }
 
 export async function getRoster(db: SupabaseClient): Promise<RosterStudent[]> {
-  const rows = await must(db.from('students').select('*').order('created_at', { ascending: false }));
+  const rows = await must(db.from('students').select('*, branches(name)').order('created_at', { ascending: false }));
   return (rows as unknown[]).map(mapStudent);
 }
 
@@ -203,8 +206,33 @@ export async function buildAdminData(db: SupabaseClient): Promise<AdminData> {
   };
 }
 
-export async function buildAccountantData(db: SupabaseClient): Promise<AccountantData> {
-  const [roster, transactions] = await Promise.all([getRoster(db), getTransactions(db)]);
+/** Matches no branch — used so a teacher without a branch sees nothing. */
+const NO_BRANCH = '00000000-0000-0000-0000-000000000000';
+
+/**
+ * Branch a staff member is limited to: teachers always, accountants when the
+ * admin assigned them one. null = all branches (admin, all-branch accountant).
+ */
+export function staffBranchScope(user: SessionUser): string | null {
+  if (user.role === 'teacher') return user.branchId ?? NO_BRANCH; // fail closed if unset
+  return user.role === 'accountant' ? user.branchId : null;
+}
+
+/** True if the student is inside the user's branch scope. */
+export async function studentInScope(db: SupabaseClient, user: SessionUser, studentId: string | null): Promise<boolean> {
+  const branch = staffBranchScope(user);
+  if (!branch) return true;
+  if (!studentId) return false;
+  const { data } = await db.from('students').select('branch_id').eq('id', studentId).maybeSingle();
+  return data?.branch_id === branch;
+}
+
+export async function buildAccountantData(db: SupabaseClient, user: SessionUser): Promise<AccountantData> {
+  const branch = staffBranchScope(user);
+  const [allRoster, allTransactions] = await Promise.all([getRoster(db), getTransactions(db)]);
+  const roster = branch ? allRoster.filter((s) => s.branchId === branch) : allRoster;
+  const inRoster = new Set(roster.map((s) => s.id));
+  const transactions = branch ? allTransactions.filter((t) => inRoster.has(t.studentId)) : allTransactions;
   const month = monthKey();
   const verifiedThisMonth = transactions.filter(
     (t) => t.status === 'verified' && (t.verifiedAt ?? t.date).startsWith(month)
@@ -230,6 +258,22 @@ export async function buildAccountantData(db: SupabaseClient): Promise<Accountan
 }
 
 // ---------------------------------------------------------------------------
+// Branches
+// ---------------------------------------------------------------------------
+
+export async function getBranches(db: SupabaseClient, { activeOnly = false } = {}): Promise<Branch[]> {
+  let q = db.from('branches').select('id, name, address, is_active').order('name');
+  if (activeOnly) q = q.eq('is_active', true);
+  const rows = await must(q);
+  return (rows as Array<{ id: string; name: string; address: string | null; is_active: boolean }>).map((b) => ({
+    id: b.id,
+    name: b.name,
+    address: b.address,
+    isActive: b.is_active,
+  }));
+}
+
+// ---------------------------------------------------------------------------
 // Teacher assignments
 // ---------------------------------------------------------------------------
 
@@ -250,22 +294,27 @@ export async function teacherScopeFor(db: SupabaseClient, user: SessionUser): Pr
 
 export async function buildTeacherData(db: SupabaseClient, user: SessionUser): Promise<TeacherData> {
   const [roster, allocations, scope] = await Promise.all([getRoster(db), getAllocations(db), teacherScopeFor(db, user)]);
-  const active = roster.filter((s) => s.status === 'active');
+  // Teachers only ever see their own branch.
+  const active = roster.filter((s) => s.status === 'active' && (user.role !== 'teacher' || s.branchId === user.branchId));
   const taught = scope === null ? active : active.filter((s) => s.subjects.some((sub) => canTeach(scope, sub, s.classNumber)));
   return {
     roster: taught.map(toTeacherView),
-    allocations: scope === null ? allocations : allocations.filter((a) => canTeach(scope, a.subject, a.classNumber)),
+    allocations:
+      scope === null
+        ? allocations
+        : allocations.filter((a) => canTeach(scope, a.subject, a.classNumber) && taught.some((s) => s.id === a.studentId)),
     assignments: scope,
   };
 }
 
 /** "Class-Subject" -> teacher names, from active teacher accounts' assignments. */
-async function assignedTeacherNames(db: SupabaseClient, classNumber: number): Promise<Map<string, string[]>> {
+async function assignedTeacherNames(db: SupabaseClient, classNumber: number, branchId: string): Promise<Map<string, string[]>> {
   const rows = await must(
     db
       .from('teacher_assignments')
-      .select('subject, profiles!inner(full_name, is_active, role)')
+      .select('subject, profiles!inner(full_name, is_active, role, branch_id)')
       .eq('class_number', classNumber)
+      .eq('profiles.branch_id', branchId)
   );
   const map = new Map<string, string[]>();
   for (const r of rows as unknown as Array<{ subject: string; profiles: { full_name: string | null; is_active: boolean; role: string } }>) {
@@ -312,7 +361,7 @@ function nextDueDate(paid: boolean): string {
 }
 
 export async function buildStudentData(db: SupabaseClient, studentId: string): Promise<StudentData | null> {
-  const { data: row, error } = await db.from('students').select('*').eq('id', studentId).maybeSingle();
+  const { data: row, error } = await db.from('students').select('*, branches(name)').eq('id', studentId).maybeSingle();
   if (error) throw error;
   if (!row) return null;
   const student = mapStudent(row);
@@ -320,7 +369,7 @@ export async function buildStudentData(db: SupabaseClient, studentId: string): P
   const [transactions, noticeList, assigned] = await Promise.all([
     getTransactions(db, student.id),
     getNotices(db, noticeAudiencesFor('student')),
-    assignedTeacherNames(db, student.classNumber),
+    assignedTeacherNames(db, student.classNumber, student.branchId),
   ]);
 
   const classFees = SUBJECT_FEES[student.classNumber] ?? {};
@@ -367,6 +416,7 @@ export async function buildStudentData(db: SupabaseClient, studentId: string): P
   return {
     profile: {
       id: student.id,
+      branchName: student.branchName,
       fullName: student.fullName,
       registrationNumber: student.registrationNumber,
       classNumber: student.classNumber,

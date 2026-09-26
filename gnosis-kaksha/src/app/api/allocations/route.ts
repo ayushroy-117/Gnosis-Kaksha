@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { requirePermission, serverError } from '@/lib/authz';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { getAllocations, mapAllocation, teacherScopeFor } from '@/lib/server/institute';
+import { getAllocations, getRoster, mapAllocation, staffBranchScope, studentInScope, teacherScopeFor } from '@/lib/server/institute';
 import { canTeach } from '@/lib/institute-data';
 import { SUBJECT_FEES } from '@/lib/fees';
 
@@ -15,7 +15,11 @@ export async function GET() {
   try {
     const db = createAdminClient();
     const [all, scope] = await Promise.all([getAllocations(db), teacherScopeFor(db, auth.user)]);
-    return NextResponse.json({ allocations: all.filter((a) => canTeach(scope, a.subject, a.classNumber)) });
+    const branch = staffBranchScope(auth.user);
+    const inBranch = branch ? new Set((await getRoster(db)).filter((s) => s.branchId === branch).map((s) => s.id)) : null;
+    return NextResponse.json({
+      allocations: all.filter((a) => canTeach(scope, a.subject, a.classNumber) && (!inBranch || inBranch.has(a.studentId))),
+    });
   } catch (err) {
     return serverError('allocations GET', err, 'Could not load allocation requests.');
   }
@@ -43,6 +47,7 @@ export async function POST(request: NextRequest) {
       .select('id, full_name, registration_number, class_number, subjects, status')
       .eq('id', studentId)
       .maybeSingle();
+    if (student && !(await studentInScope(db, auth.user, student.id))) return NextResponse.json({ error: 'That student is at another branch.' }, { status: 403 });
     if (!student || student.status !== 'active') {
       return NextResponse.json({ error: 'Student not found or not currently enrolled.' }, { status: 404 });
     }
@@ -106,6 +111,7 @@ export async function PATCH(request: NextRequest) {
     const db = createAdminClient();
     const { data: req } = await db.from('allocation_requests').select('*').eq('id', body.id).maybeSingle();
     if (!req) return NextResponse.json({ error: 'Request not found.' }, { status: 404 });
+    if (!(await studentInScope(db, auth.user, req.student_id))) return NextResponse.json({ error: 'That student is at another branch.' }, { status: 403 });
     if (req.status !== 'PENDING') return NextResponse.json({ error: `Already ${req.status.toLowerCase()}.` }, { status: 409 });
 
     if (body.resolution === 'APPROVED') {

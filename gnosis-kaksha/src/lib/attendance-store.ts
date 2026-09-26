@@ -15,6 +15,7 @@ export interface AttendanceEntry {
 
 export interface AttendanceRecord {
   id: string;
+  branchId: string;
   date: string;
   classNumber: number;
   subject: string;

@@ -37,6 +37,9 @@ export default function AccountantTransactionsPage() {
   const [methodFilter, setMethodFilter] = useState<'All' | 'UPI' | 'Cash'>('All');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('All');
   const [activeReceipt, setActiveReceipt] = useState<Transaction | null>(null);
+  const [branchFilter, setBranchFilter] = useState('');
+  const branchesApi = useApi<{ branches: { id: string; name: string }[] }>('/api/branches');
+  const branches = branchesApi.data?.branches ?? [];
 
   const transactions = useMemo(() => data?.transactions ?? [], [data]);
   const rosterById = useMemo(() => new Map((data?.roster ?? []).map((s) => [s.id, s])), [data]);
@@ -51,9 +54,10 @@ export default function AccountantTransactionsPage() {
         );
       const matchesMethod = methodFilter === 'All' || t.method === methodFilter;
       const matchesStatus = statusFilter === 'All' || STATUS_FILTER_MAP[statusFilter].includes(t.status);
-      return matchesSearch && matchesMethod && matchesStatus;
+      const matchesBranch = !branchFilter || rosterById.get(t.studentId)?.branchId === branchFilter;
+      return matchesSearch && matchesMethod && matchesStatus && matchesBranch;
     });
-  }, [transactions, searchTerm, methodFilter, statusFilter]);
+  }, [transactions, searchTerm, methodFilter, statusFilter, branchFilter, rosterById]);
 
   if (loading && !data) return <LoadingState label="Loading transactions…" />;
   if (error && !data) return <ErrorState message={error.message} onRetry={reload} />;
@@ -123,6 +127,25 @@ export default function AccountantTransactionsPage() {
             </button>
           ))}
         </div>
+
+        {branches.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-semibold text-gray-600 uppercase">Branch:</span>
+            <select
+              aria-label="Filter by branch"
+              value={branchFilter}
+              onChange={(e) => setBranchFilter(e.target.value)}
+              className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 focus:outline-hidden focus:ring-2 focus:ring-[#1295D8]"
+            >
+              <option value="">All branches</option>
+              {branches.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       {filtered.length === 0 ? (
@@ -165,6 +188,9 @@ export default function AccountantTransactionsPage() {
                       <td className="px-6 py-4">
                         <p className="font-semibold text-[#1A2B4A]">{t.studentName}</p>
                         <p className="font-mono text-xs text-[#718096]">{t.registrationNumber || '—'}</p>
+                        {rosterById.get(t.studentId)?.branchName && (
+                          <p className="text-xs text-[#718096]">{rosterById.get(t.studentId)?.branchName}</p>
+                        )}
                       </td>
                       <td className="px-6 py-4 text-[#4A5568] max-w-xs truncate">{t.description}</td>
                       <td className="px-6 py-4">

@@ -33,6 +33,7 @@ export type Permission =
   // Administration
   | 'manage_notices'
   | 'manage_payment_settings'  // institute UPI payee used in payment QR codes
+  | 'manage_branches'          // add / rename / deactivate branches
   | 'manage_accounts';         // create staff, change roles, deactivate
 
 const MATRIX: Record<Exclude<UserRole, 'admin'>, Permission[]> = {
@@ -63,7 +64,7 @@ export const ALL_PERMISSIONS: Permission[] = [
   'manage_admissions', 'view_financials', 'review_payments', 'record_payment',
   'send_fee_reminders', 'view_allocations', 'request_allocation', 'resolve_allocation',
   'mark_attendance', 'manage_study_material', 'download_study_material',
-  'manage_notices', 'manage_payment_settings', 'manage_accounts',
+  'manage_notices', 'manage_payment_settings', 'manage_branches', 'manage_accounts',
 ];
 
 export function hasPermission(role: UserRole | null | undefined, permission: Permission): boolean {

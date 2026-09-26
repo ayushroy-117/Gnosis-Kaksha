@@ -118,6 +118,13 @@ export default function StudentProfilePage() {
   if (error) return <ErrorState message={error.message} onRetry={reload} />;
   if (!data) return null;
   const { profile } = data;
+  // Only an approved (active) student gets a valid, printable ID card.
+  const isActive = profile.enrollmentStatus === 'active';
+  const statusBadge = isActive
+    ? { tone: 'green' as const, label: 'Active Enrolled' }
+    : profile.enrollmentStatus === 'pending'
+      ? { tone: 'amber' as const, label: 'Admission pending' }
+      : { tone: 'red' as const, label: 'Not approved' };
 
   return (
     <div className="space-y-8">
@@ -141,6 +148,8 @@ export default function StudentProfilePage() {
           <Button
             type="button"
             onClick={handlePrint}
+            disabled={!isActive}
+            title={isActive ? undefined : 'Your ID card can be printed once your admission is approved'}
             className="gap-2 bg-gradient-to-r from-[#1295D8] to-[#2E5EAA] text-white shadow-md hover:shadow-lg transition-all"
           >
             <Printer size={16} /> Print / Save ID Card (PDF)
@@ -174,7 +183,11 @@ export default function StudentProfilePage() {
         <div className="mb-6 flex flex-wrap items-center justify-between gap-4 border-b border-gray-100 pb-4 print:hidden">
           <div className="flex items-center gap-2">
             <h2 className="text-lg font-bold text-[#1A2B4A]">Digital ID Card Preview</h2>
-            <Badge tone="green">Verified 2026–2027</Badge>
+            {isActive ? (
+              <Badge tone="green">Verified 2026–2027</Badge>
+            ) : (
+              <Badge tone="amber">Preview only — not valid until admission is approved</Badge>
+            )}
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -371,8 +384,17 @@ export default function StudentProfilePage() {
                         <p className="text-[7.5px] font-bold uppercase tracking-wider text-slate-400 leading-none">
                           Contact Number
                         </p>
-                        <p className="text-[10px] font-bold text-slate-800 leading-tight mt-0.5">
+                        <p className="text-[10px] font-bold text-slate-800 leading-tight mt-0.5 whitespace-nowrap">
                           +91 {profile.mobile}
+                        </p>
+                      </div>
+
+                      <div>
+                        <p className="text-[7.5px] font-bold uppercase tracking-wider text-slate-400 leading-none">
+                          Branch
+                        </p>
+                        <p className="text-[10px] font-bold text-slate-800 leading-tight line-clamp-2 mt-0.5">
+                          {profile.branchName || '—'}
                         </p>
                       </div>
 
@@ -389,17 +411,28 @@ export default function StudentProfilePage() {
                 </div>
 
                 {/* ── Security Verified Badge Strip ── */}
-                <div className="mt-3 flex items-center justify-between rounded-lg bg-emerald-50/90 border border-emerald-200 px-2.5 py-1.5 shadow-2xs">
-                  <div className="flex items-center gap-1.5">
-                    <ShieldCheck size={14} className="text-emerald-600 shrink-0" />
-                    <span className="text-[8.5px] font-extrabold uppercase tracking-wide text-emerald-800">
-                      Verified Active Student • 2026–2027
+                {isActive ? (
+                  <div className="mt-3 flex items-center justify-between rounded-lg bg-emerald-50/90 border border-emerald-200 px-2.5 py-1.5 shadow-2xs">
+                    <div className="flex items-center gap-1.5">
+                      <ShieldCheck size={14} className="text-emerald-600 shrink-0" />
+                      <span className="text-[8.5px] font-extrabold uppercase tracking-wide text-emerald-800">
+                        Verified Active Student • 2026–2027
+                      </span>
+                    </div>
+                    <span className="rounded-full bg-emerald-600 px-1.5 py-0.2 text-[7px] font-bold text-white uppercase">
+                      Valid
                     </span>
                   </div>
-                  <span className="rounded-full bg-emerald-600 px-1.5 py-0.2 text-[7px] font-bold text-white uppercase">
-                    Valid
-                  </span>
-                </div>
+                ) : (
+                  <div className="mt-3 flex items-center justify-between rounded-lg bg-amber-50 border border-amber-200 px-2.5 py-1.5">
+                    <span className="text-[8.5px] font-extrabold uppercase tracking-wide text-amber-800">
+                      {profile.enrollmentStatus === 'pending' ? 'Admission pending verification' : 'Admission not approved'}
+                    </span>
+                    <span className="rounded-full bg-amber-500 px-1.5 py-0.2 text-[7px] font-bold text-white uppercase">
+                      Not valid
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* Gold Accent Divider Bar */}
@@ -541,6 +574,8 @@ export default function StudentProfilePage() {
           <Button
             type="button"
             onClick={handlePrint}
+            disabled={!isActive}
+            title={isActive ? undefined : 'Your ID card can be printed once your admission is approved'}
             className="gap-2 bg-[#1A2B4A] hover:bg-[#1295D8] text-white shadow-sm"
           >
             <Printer size={15} /> Print ID Card (Both Sides)
@@ -564,7 +599,7 @@ export default function StudentProfilePage() {
           <div className="flex-1 text-center sm:text-left">
             <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
               <h2 className="text-2xl font-bold text-[#1A2B4A]">{profile.fullName}</h2>
-              <Badge tone="green">Active Enrolled</Badge>
+              <Badge tone={statusBadge.tone}>{statusBadge.label}</Badge>
               <Badge tone="blue">Class {profile.classNumber}</Badge>
             </div>
             <p className="font-mono text-sm font-semibold text-[#1295D8] mt-1">
@@ -573,6 +608,7 @@ export default function StudentProfilePage() {
             <div className="mt-2 flex flex-wrap justify-center gap-2 sm:justify-start">
               {profile.stream && <Badge tone="gray">{profile.stream}</Badge>}
               <Badge tone="gray">{profile.board} Board</Badge>
+              {profile.branchName && <Badge tone="gray">{profile.branchName}</Badge>}
               <span className="text-xs text-gray-500 self-center">
                 Admitted on: {formatDate(profile.admissionDate)}
               </span>
@@ -586,6 +622,7 @@ export default function StudentProfilePage() {
             <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <ProfileField label="Full Name" value={profile.fullName} />
               <ProfileField label="Registration Number" value={profile.registrationNumber} />
+              <ProfileField label="Branch" value={profile.branchName || '—'} />
               <ProfileField label="Class Level" value={`Class ${profile.classNumber}`} />
               <ProfileField label="Stream / Course" value={profile.stream ?? 'General'} />
               <ProfileField label="Academic Board" value={profile.board} />

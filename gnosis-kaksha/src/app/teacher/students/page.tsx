@@ -23,6 +23,7 @@ import { Button } from '@/components/ui/Button';
 import { Barcode } from '@/components/ui/Barcode';
 import { LoadingState, ErrorState } from '@/components/dashboard/PageState';
 import { useApi } from '@/hooks/useApi';
+import { useAuth } from '@/hooks/useAuth';
 import { classLabel, type TeacherData, type TeacherRosterStudent } from '@/lib/institute-data';
 import { QRCodeSVG } from 'qrcode.react';
 
@@ -33,6 +34,12 @@ export default function TeacherStudentsPage() {
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('table');
   const [activeBarcodeStudent, setActiveBarcodeStudent] = useState<TeacherRosterStudent | null>(null);
   const [copiedRegNo, setCopiedRegNo] = useState(false);
+
+  // /api/auth/me includes the staff branch; null = sees all branches (admin).
+  const { user } = useAuth();
+  const branchName = user?.branchName ?? null;
+  const branchId = user?.branchId ?? null;
+  const showBranchColumn = !!user && user.role !== 'teacher' && !branchId;
 
   // Active enrolled students
   const { data, error, loading, reload } = useApi<TeacherData>('/api/data/teacher');
@@ -103,6 +110,11 @@ export default function TeacherStudentsPage() {
               <Sparkles size={12} /> Barcode Enabled
             </span>
           </div>
+          {user && (
+            <p className="mt-1 text-sm font-semibold text-[#2E5EAA]">
+              {branchName ? `Branch: ${branchName}` : 'All branches'}
+            </p>
+          )}
           <p className="mt-1 text-sm text-[#4A5568]">
             Academic student roster, enrolled subjects, barcode identification, and guardian contacts for faculty.
           </p>
@@ -317,6 +329,7 @@ export default function TeacherStudentsPage() {
               <thead>
                 <tr className="border-b border-gray-100 text-xs font-semibold uppercase tracking-wide text-[#718096] bg-[#F8FAFC]">
                   <th className="px-6 py-3.5">Student</th>
+                  {showBranchColumn && <th className="px-6 py-3.5">Branch</th>}
                   <th className="px-6 py-3.5">Class &amp; Board</th>
                   <th className="px-6 py-3.5">Enrolled Subjects</th>
                   <th className="px-6 py-3.5">Guardian &amp; Mobile</th>
@@ -339,6 +352,10 @@ export default function TeacherStudentsPage() {
                         </div>
                       </div>
                     </td>
+
+                    {showBranchColumn && (
+                      <td className="px-6 py-4 whitespace-nowrap text-[#4A5568]">{s.branchName || '—'}</td>
+                    )}
 
                     {/* Class & Board */}
                     <td className="px-6 py-4 whitespace-nowrap">

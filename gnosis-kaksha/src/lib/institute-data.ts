@@ -9,8 +9,17 @@ export type StudentFeeState = 'paid' | 'due' | 'pending_verification';
 export type TransactionStatus = 'verified' | 'pending' | 'rejected' | 'failed';
 export type PaymentMethod = 'UPI' | 'Cash' | 'Card' | 'Bank Transfer';
 
+export interface Branch {
+  id: string;
+  name: string;
+  address: string | null;
+  isActive: boolean;
+}
+
 export interface RosterStudent {
   id: string;
+  branchId: string;
+  branchName: string;
   registrationNumber: string;
   fullName: string;
   classNumber: number;
@@ -39,7 +48,7 @@ export interface RosterStudent {
 /** What teachers get: no fees, scholarship or admission-payment details. */
 export type TeacherRosterStudent = Pick<
   RosterStudent,
-  'id' | 'registrationNumber' | 'fullName' | 'classNumber' | 'stream' | 'board' | 'subjects' | 'parentName' | 'mobile' | 'status' | 'admissionDate'
+  'id' | 'branchId' | 'branchName' | 'registrationNumber' | 'fullName' | 'classNumber' | 'stream' | 'board' | 'subjects' | 'parentName' | 'mobile' | 'status' | 'admissionDate'
 >;
 
 export interface Transaction {

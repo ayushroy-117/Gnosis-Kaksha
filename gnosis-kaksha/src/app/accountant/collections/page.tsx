@@ -40,6 +40,8 @@ type PaymentMethod = 'Cash' | 'UPI' | 'Bank Transfer';
 
 export default function AccountantCollectionsPage() {
   const { data, error, loading, reload } = useApi<AccountantData>('/api/data/accountant');
+  const branchesApi = useApi<{ branches: { id: string; name: string }[] }>('/api/branches');
+  const [branchFilter, setBranchFilter] = useState('');
 
   const [selectedStudent, setSelectedStudent] = useState<RosterStudent | null>(null);
   const [whatsAppStudent, setWhatsAppStudent] = useState<RosterStudent | null>(null);
@@ -72,6 +74,11 @@ export default function AccountantCollectionsPage() {
         }),
     [roster]
   );
+
+  const branches = branchesApi.data?.branches ?? [];
+  const inBranch = (s: RosterStudent | undefined) => !branchFilter || s?.branchId === branchFilter;
+  const visiblePending = pendingVerifications.filter((t) => inBranch(byId.get(t.studentId)));
+  const visibleActive = active.filter((s) => inBranch(s));
 
   if (loading && !data) return <LoadingState label="Loading collections…" />;
   if (error && !data) return <ErrorState message={error.message} onRetry={reload} />;
@@ -202,21 +209,43 @@ export default function AccountantCollectionsPage() {
         </div>
       </div>
 
+      {branches.length > 0 && (
+        <div className="w-full sm:w-64">
+          <Select
+            aria-label="Filter by branch"
+            value={branchFilter}
+            onChange={(e) => setBranchFilter(e.target.value)}
+            options={[
+              { value: '', label: 'All branches' },
+              ...branches.map((b) => ({ value: b.id, label: b.name })),
+            ]}
+          />
+        </div>
+      )}
+
       {/* ── PENDING UPI VERIFICATIONS QUEUE ─────────────────────────────── */}
       <SectionCard
-        title={`Pending UPI Verifications (${pendingVerifications.length})`}
+        title={`Pending UPI Verifications (${visiblePending.length})`}
         description="Oldest first. Check each transaction ID against your bank/UPI statement before approving."
         bodyClassName="p-0"
       >
-        {pendingVerifications.length === 0 ? (
+        {visiblePending.length === 0 ? (
           <div className="p-6">
-            <EmptyState icon={Inbox} title="Queue is clear" message="New UPI submissions from students and applicants will appear here." />
+            <EmptyState
+              icon={Inbox}
+              title="Queue is clear"
+              message={
+                branchFilter
+                  ? 'No pending UPI submissions for the selected branch.'
+                  : 'New UPI submissions from students and applicants will appear here.'
+              }
+            />
           </div>
         ) : (
           <>
             {/* Phones: one card per submission so Approve/Reject stay on screen */}
             <ul className="divide-y divide-gray-100 md:hidden">
-              {pendingVerifications.map((txn) => {
+              {visiblePending.map((txn) => {
                 const stu = byId.get(txn.studentId);
                 return (
                   <li key={txn.id} className="space-y-3 px-4 py-4">
@@ -224,6 +253,7 @@ export default function AccountantCollectionsPage() {
                       <div className="min-w-0">
                         <p className="font-semibold text-[#1A2B4A]">{txn.studentName}</p>
                         <p className="text-xs font-mono text-[#718096]">{stu?.registrationNumber ?? txn.registrationNumber ?? '—'}</p>
+                        {stu?.branchName && <p className="text-xs text-[#718096]">{stu.branchName}</p>}
                       </div>
                       <p className="shrink-0 text-base font-bold text-[#1A2B4A]">{formatINR(txn.amount)}</p>
                     </div>
@@ -270,7 +300,7 @@ export default function AccountantCollectionsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {pendingVerifications.map((txn) => {
+                  {visiblePending.map((txn) => {
                     const stu = byId.get(txn.studentId);
                     const busy = approvingId === txn.id;
                     return (
@@ -278,6 +308,7 @@ export default function AccountantCollectionsPage() {
                         <td className="px-6 py-4">
                           <p className="font-semibold text-[#1A2B4A]">{txn.studentName}</p>
                           <p className="text-xs font-mono text-[#718096]">{stu?.registrationNumber ?? txn.registrationNumber ?? '—'}</p>
+                          {stu?.branchName && <p className="text-xs text-[#718096]">{stu.branchName}</p>}
                           {stu && <p className="text-xs text-[#718096]">{classLabel(stu)}</p>}
                         </td>
                         <td className="px-6 py-4">
@@ -340,8 +371,16 @@ export default function AccountantCollectionsPage() {
       </SectionCard>
 
       {/* ── STUDENT TUITION LEDGER ────────────────────────────────────────── */}
-      {active.length === 0 ? (
-        <EmptyState icon={Wallet} title="No active students" message="Fee ledgers appear here once students are enrolled." />
+      {visibleActive.length === 0 ? (
+        <EmptyState
+          icon={Wallet}
+          title="No active students"
+          message={
+            branchFilter
+              ? 'No active students in the selected branch.'
+              : 'Fee ledgers appear here once students are enrolled.'
+          }
+        />
       ) : (
         <SectionCard title="Student Tuition Ledger" bodyClassName="p-0">
           <div className="overflow-x-auto">
@@ -356,11 +395,12 @@ export default function AccountantCollectionsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {active.map((s) => (
+                {visibleActive.map((s) => (
                   <tr key={s.id} className="hover:bg-[#F7FAFC] transition">
                     <td className="px-6 py-4">
                       <p className="font-semibold text-[#1A2B4A]">{s.fullName}</p>
                       <p className="text-xs font-mono text-[#718096]">{s.registrationNumber}</p>
+                      {s.branchName && <p className="text-xs text-[#718096]">{s.branchName}</p>}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-[#4A5568]">{classLabel(s)}</td>
                     <td className="px-6 py-4 text-right font-semibold text-[#1A2B4A]">{formatINR(s.tuitionAfterScholarship)}</td>

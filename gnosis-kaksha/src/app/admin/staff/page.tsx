@@ -28,6 +28,8 @@ interface Account {
   registrationNumber: string | null;
   permissions: Permission[];
   assignments: TeachingAssignment[] | null;
+  branchId: string | null;
+  branchName: string | null;
 }
 
 const CLASS_NUMBERS = Object.keys(SUBJECT_FEES).map(Number).sort((a, b) => a - b);
@@ -60,7 +62,9 @@ const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 export default function AdminAccountsPage() {
   const { data, error, loading, reload } = useApi<{ accounts: Account[] }>('/api/admin/accounts');
-  const [form, setForm] = useState({ fullName: '', email: '', role: 'teacher' as 'teacher' | 'accountant', password: '' });
+  const { data: branchData } = useApi<{ branches: { id: string; name: string }[] }>('/api/branches');
+  const branches = branchData?.branches ?? [];
+  const [form, setForm] = useState({ fullName: '', email: '', role: 'teacher' as 'teacher' | 'accountant', password: '', branchId: '' });
   const [isCreating, setIsCreating] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -110,9 +114,9 @@ export default function AdminAccountsPage() {
     e.preventDefault();
     setIsCreating(true);
     try {
-      await apiFetch('/api/admin/accounts', { method: 'POST', json: form });
+      await apiFetch('/api/admin/accounts', { method: 'POST', json: { ...form, branchId: form.branchId || null } });
       toast.success(`${capitalize(form.role)} account created for ${form.fullName}.`);
-      setForm({ fullName: '', email: '', role: 'teacher', password: '' });
+      setForm({ fullName: '', email: '', role: 'teacher', password: '', branchId: '' });
       reload();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Could not create account.');
@@ -121,7 +125,7 @@ export default function AdminAccountsPage() {
     }
   };
 
-  const update = async (account: Account, patch: { role?: UserRole; isActive?: boolean; password?: string }, success: string) => {
+  const update = async (account: Account, patch: { role?: UserRole; isActive?: boolean; password?: string; branchId?: string | null }, success: string) => {
     setBusyId(account.id);
     try {
       await apiFetch('/api/admin/accounts', { method: 'PATCH', json: { id: account.id, ...patch } });
@@ -183,6 +187,16 @@ export default function AdminAccountsPage() {
                 ]}
                 value={form.role}
                 onChange={(e) => setForm((f) => ({ ...f, role: e.target.value as typeof form.role }))}
+              />
+              <Select
+                label={form.role === 'teacher' ? 'Branch' : 'Branch (optional)'}
+                options={[
+                  ...(form.role === 'accountant' ? [{ value: '', label: 'All branches' }] : []),
+                  ...branches.map((b) => ({ value: b.id, label: b.name })),
+                ]}
+                value={form.branchId}
+                onChange={(e) => setForm((f) => ({ ...f, branchId: e.target.value }))}
+                required={form.role === 'teacher'}
               />
               <Input
                 label="Temporary Password"
@@ -247,6 +261,32 @@ export default function AdminAccountsPage() {
                             {a.registrationNumber && <> · <span className="font-mono">{a.registrationNumber}</span></>}
                             {' · '}
                             {a.lastSignInAt ? `Last sign-in ${formatDate(a.lastSignInAt.slice(0, 10))}` : 'Never signed in'}
+                          </p>
+                          <p className="text-xs text-[#4A5568]">
+                            Branch:{' '}
+                            {a.role === 'teacher' || a.role === 'accountant' ? (
+                              <select
+                                aria-label={`Branch for ${a.fullName || a.email}`}
+                                value={a.branchId ?? ''}
+                                disabled={busy || !a.isActive}
+                                onChange={(e) =>
+                                  update(
+                                    a,
+                                    { branchId: e.target.value || null },
+                                    `${a.fullName || a.email} moved to ${branches.find((b) => b.id === e.target.value)?.name ?? 'all branches'}.`
+                                  )
+                                }
+                                className="rounded border border-gray-300 bg-white px-1.5 py-0.5 text-xs font-semibold text-[#1A2B4A] focus:border-[#1295D8] focus:outline-none disabled:opacity-60"
+                              >
+                                {a.role === 'accountant' && <option value="">All branches</option>}
+                                {a.role === 'teacher' && !a.branchId && <option value="">Not set</option>}
+                                {branches.map((b) => (
+                                  <option key={b.id} value={b.id}>{b.name}</option>
+                                ))}
+                              </select>
+                            ) : (
+                              <span className="font-semibold">{a.branchName ?? (a.role === 'admin' ? 'All branches' : '—')}</span>
+                            )}
                           </p>
                         </div>
                         {isAdmin ? (
