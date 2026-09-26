@@ -1,28 +1,27 @@
-import { createClient } from '@supabase/supabase-js';
+import 'server-only';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 /**
- * Server-only Supabase client using the SERVICE-ROLE key.
+ * Server-only Supabase client using the SERVICE-ROLE key (bypasses RLS).
  *
- * The service-role key bypasses Row Level Security, so this MUST never be
- * imported from a client component. `SUPABASE_SERVICE_ROLE_KEY` has no
- * `NEXT_PUBLIC_` prefix, so Next.js will not bundle it into the browser.
- *
- * Used for admin/accountant reads and admission approve/reject, because the
- * app's live session is localStorage-based (no auth cookie server-side), so
- * per-user RLS is not available yet. The dashboards are gated client-side by
- * DashboardLayout. See supabase/schema.sql for the access model and the
- * follow-up note about migrating to cookie-based auth for true server-side
- * authorization.
+ * Every route that uses this must first authorize the caller with
+ * `requirePermission` from `@/lib/authz` — this client does no access checks.
  */
-export function createAdminClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+export function supabaseUrl(): string | undefined {
+  return process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+}
+
+let cached: SupabaseClient | null = null;
+
+export function createAdminClient(): SupabaseClient {
+  if (cached) return cached;
+  const url = supabaseUrl();
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
   if (!url || !serviceKey) {
-    return null;
+    throw new Error('Database is not configured (SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY).');
   }
-
-  return createClient(url, serviceKey, {
+  cached = createClient(url, serviceKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
+  return cached;
 }

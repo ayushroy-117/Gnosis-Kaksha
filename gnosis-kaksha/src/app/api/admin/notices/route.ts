@@ -1,114 +1,92 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
+import { requirePermission, serverError } from '@/lib/authz';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { getAllNotices, addNotice, deleteNotice } from '@/lib/institute-store';
+import { getNotices, mapNotice, noticeAudiencesFor } from '@/lib/server/institute';
 
-// GET  /api/admin/notices    — list all notices
-// POST /api/admin/notices    — create a new notice with optional file attachment
-// DELETE /api/admin/notices?id=<uuid> — delete a notice
+export const dynamic = 'force-dynamic';
 
+const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024;
+
+// GET /api/admin/notices — every active notice incl. staff-only (admin)
 export async function GET() {
+  const auth = await requirePermission('manage_notices');
+  if (!auth.ok) return auth.response;
   try {
-    const supabase = createAdminClient();
-    if (supabase) {
-      const { data, error } = await supabase
-        .from('notices')
-        .select('*')
-        .order('is_pinned', { ascending: false })
-        .order('published_at', { ascending: false });
-
-      if (!error && data && data.length > 0) {
-        const mapped = data.map((n: any) => ({
-          id: n.id,
-          title: n.title,
-          content: n.content || '',
-          date: n.published_at ? n.published_at.split('T')[0] : (n.created_at ? n.created_at.split('T')[0] : new Date().toISOString().split('T')[0]),
-          audience: n.audience || 'All',
-          pinned: Boolean(n.is_pinned),
-          attachmentUrl: n.external_url || null,
-          attachmentName: n.external_url ? n.external_url.split('/').pop()?.split('?')[0] || 'Attachment' : null,
-          attachmentSize: null,
-        }));
-        return NextResponse.json({ notices: mapped });
-      }
-    }
-
-    // Local / fallback store
-    return NextResponse.json({ notices: getAllNotices() });
-  } catch (error: any) {
-    return NextResponse.json({ error: error?.message, notices: getAllNotices() }, { status: 200 });
+    return NextResponse.json({ notices: await getNotices(createAdminClient(), noticeAudiencesFor('staff')) });
+  } catch (err) {
+    return serverError('admin/notices GET', err, 'Could not load notices.');
   }
 }
 
+const noticeSchema = z.object({
+  title: z.string().trim().min(3, 'Title must be at least 3 characters').max(200),
+  content: z.string().trim().max(5000).optional().default(''),
+  audience: z.enum(['All', 'Students', 'Parents', 'Staff']).default('All'),
+  pinned: z.boolean().optional().default(false),
+  attachmentUrl: z.string().max(8_000_000).nullable().optional(),
+  attachmentName: z.string().trim().max(200).nullable().optional(),
+  attachmentSize: z.string().trim().max(40).nullable().optional(),
+});
+
+// POST /api/admin/notices — publish a notice, optionally with a file (data: URL) or link.
 export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json();
-    const { title, content, external_url, audience, pinned, is_pinned, attachmentUrl, attachmentName, attachmentSize } = body;
+  const auth = await requirePermission('manage_notices');
+  if (!auth.ok) return auth.response;
 
-    if (!title?.trim()) {
-      return NextResponse.json({ error: 'Notice title is required' }, { status: 400 });
-    }
-
-    const finalAttachmentUrl = attachmentUrl || external_url || null;
-    const finalPinned = Boolean(is_pinned ?? pinned);
-
-    // Save in local store first for instant UI response and persistence
-    const newNotice = addNotice({
-      title: title.trim(),
-      content: content?.trim() || '',
-      audience: audience || 'All',
-      pinned: finalPinned,
-      attachmentUrl: finalAttachmentUrl,
-      attachmentName: attachmentName || (finalAttachmentUrl ? 'Attached Document' : null),
-      attachmentSize: attachmentSize || null,
-    });
-
-    // Also sync to Supabase if available
-    try {
-      const supabase = createAdminClient();
-      if (supabase) {
-        await supabase
-          .from('notices')
-          .insert([
-            {
-              id: newNotice.id.startsWith('not-') ? undefined : newNotice.id,
-              title: title.trim(),
-              content: content?.trim() || null,
-              external_url: finalAttachmentUrl,
-              audience: audience || 'All',
-              is_pinned: finalPinned,
-              is_active: true,
-            },
-          ]);
+  const parsed = noticeSchema.safeParse(await request.json().catch(() => null));
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid notice' }, { status: 400 });
+  }
+  const n = parsed.data;
+  const url = n.attachmentUrl?.trim() || null;
+  if (url) {
+    if (url.startsWith('data:')) {
+      const base64 = url.slice(url.indexOf(',') + 1);
+      if ((base64.length * 3) / 4 > MAX_ATTACHMENT_BYTES) {
+        return NextResponse.json({ error: 'Attachment is larger than 5 MB. Upload a smaller file or share a link.' }, { status: 413 });
       }
-    } catch (e) {
-      console.warn('Notice Supabase sync warning (ignorable in offline mode):', e);
+    } else if (!/^https?:\/\//i.test(url)) {
+      return NextResponse.json({ error: 'Links must start with http:// or https://' }, { status: 400 });
     }
+  }
 
-    return NextResponse.json({ success: true, notice: newNotice }, { status: 201 });
-  } catch (error: any) {
-    return NextResponse.json({ error: error?.message }, { status: 500 });
+  try {
+    const { data, error } = await createAdminClient()
+      .from('notices')
+      .insert({
+        title: n.title,
+        content: n.content || null,
+        audience: n.audience,
+        is_pinned: n.pinned,
+        is_active: true,
+        external_url: url,
+        attachment_name: url ? n.attachmentName || (url.startsWith('data:') ? 'Attached Document' : 'Open link') : null,
+        attachment_size: url ? n.attachmentSize || null : null,
+      })
+      .select('*')
+      .single();
+    if (error) throw error;
+    return NextResponse.json({ success: true, notice: mapNotice(data) }, { status: 201 });
+  } catch (err) {
+    return serverError('admin/notices POST', err, 'Could not publish the notice.');
   }
 }
 
+// DELETE /api/admin/notices?id=<uuid> — removes a notice.
 export async function DELETE(request: NextRequest) {
+  const auth = await requirePermission('manage_notices');
+  if (!auth.ok) return auth.response;
+  const id = request.nextUrl.searchParams.get('id');
+  if (!id || !/^[0-9a-f-]{36}$/i.test(id)) {
+    return NextResponse.json({ error: 'A valid notice id is required.' }, { status: 400 });
+  }
   try {
-    const { searchParams } = new URL(request.url);
-    const id = searchParams.get('id');
-
-    if (!id) return NextResponse.json({ error: 'Notice ID is required' }, { status: 400 });
-
-    try {
-      const supabase = createAdminClient();
-      if (supabase) {
-        await supabase.from('notices').delete().eq('id', id);
-      }
-    } catch (e) {
-      console.warn('Notice Supabase delete warning:', e);
-    }
-
-    deleteNotice(id);
-    return NextResponse.json({ success: true, message: 'Notice deleted' });
-  } catch (error: any) {
-    return NextResponse.json({ error: error?.message }, { status: 500 });
+    const { data, error } = await createAdminClient().from('notices').delete().eq('id', id).select('id');
+    if (error) throw error;
+    if (!data?.length) return NextResponse.json({ error: 'Notice not found.' }, { status: 404 });
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    return serverError('admin/notices DELETE', err, 'Could not delete the notice.');
   }
 }

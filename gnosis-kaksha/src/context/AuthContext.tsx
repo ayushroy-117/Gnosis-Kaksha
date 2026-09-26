@@ -1,99 +1,59 @@
 'use client';
 
-import { createContext, useEffect, useState, ReactNode } from 'react';
-import {
-  getCurrentUser,
-  signIn as authSignIn,
-  signOut as authSignOut,
-  signUp as authSignUp,
-  onAuthStateChange,
-  UserRole,
-  UserData,
-} from '@/lib/auth';
-
+import { createContext, useCallback, useEffect, useState, ReactNode } from 'react';
+import { fetchMe, signIn as authSignIn, signOut as authSignOut, UserData, AuthResponse } from '@/lib/auth';
+import type { Permission } from '@/lib/permissions';
 
 interface AuthContextType {
   user: UserData | null;
+  permissions: Permission[];
   loading: boolean;
   isAuthenticated: boolean;
-  signIn: (email: string, password?: string) => Promise<{ success: boolean; error?: string }>;
-  signUp: (email: string, password: string, role: UserRole, fullName?: string) => Promise<{ success: boolean; error?: string }>;
+  can: (permission: Permission) => boolean;
+  signIn: (identifier: string, password: string) => Promise<AuthResponse>;
   signOut: () => Promise<void>;
+  refresh: () => Promise<void>;
 }
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-interface AuthProviderProps {
-  children: ReactNode;
-}
-
-export function AuthProvider({ children }: AuthProviderProps) {
+export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<UserData | null>(null);
+  const [permissions, setPermissions] = useState<Permission[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    // Check current user on mount
-    const checkUser = async () => {
-      const currentUser = await getCurrentUser();
-      setUser(currentUser);
-      setLoading(false);
-    };
-
-    checkUser();
-
-    // Subscribe to auth state changes
-    const unsubscribe = onAuthStateChange((newUser) => {
-      setUser(newUser);
-      setLoading(false);
-    });
-
-    return () => {
-      unsubscribe();
-    };
+  const refresh = useCallback(async () => {
+    const me = await fetchMe();
+    setUser(me.user);
+    setPermissions(me.permissions);
+    setLoading(false);
   }, []);
 
-  const signIn = async (email: string, password?: string) => {
-    const result = await authSignIn(email, password);
-    
-    if (result.success) {
-      const currentUser = await getCurrentUser();
-      setUser(currentUser);
-    }
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
 
-    return {
-      success: result.success,
-      error: result.error,
-    };
-  };
-
-  const signUp = async (email: string, password: string, role: UserRole, fullName?: string) => {
-    const result = await authSignUp({ email, password, role, fullName });
-
-    if (result.success) {
-      const currentUser = await getCurrentUser();
-      setUser(currentUser);
-    }
-
-    return {
-      success: result.success,
-      error: result.error,
-    };
+  const signIn = async (identifier: string, password: string) => {
+    const result = await authSignIn(identifier, password);
+    if (result.success) await refresh();
+    return result;
   };
 
   const signOut = async () => {
-    const result = await authSignOut();
-    if (result.success) {
-      setUser(null);
-    }
+    await authSignOut();
+    setUser(null);
+    setPermissions([]);
   };
 
   const value: AuthContextType = {
     user,
+    permissions,
     loading,
     isAuthenticated: !!user,
+    can: (p) => permissions.includes(p),
     signIn,
-    signUp,
     signOut,
+    refresh,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

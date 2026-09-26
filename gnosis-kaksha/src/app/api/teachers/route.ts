@@ -1,13 +1,10 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 // GET /api/teachers — returns all active teachers ordered by display_order
 export async function GET() {
   try {
     const supabase = createAdminClient();
-    if (!supabase) {
-      return NextResponse.json({ error: 'Database not configured' }, { status: 503 });
-    }
 
     const { data, error } = await supabase
       .from('teachers')
@@ -21,8 +18,8 @@ export async function GET() {
     }
 
     return NextResponse.json({ teachers: data || [] });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Teachers API error:', error);
-    return NextResponse.json({ error: error?.message || 'Unexpected error' }, { status: 500 });
+    return NextResponse.json({ error: 'Could not load teachers.' }, { status: 500 });
   }
 }

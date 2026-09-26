@@ -1,5 +1,4 @@
 import { Users } from 'lucide-react';
-import { SampleDataBanner } from '@/components/dashboard/SampleDataBanner';
 import { SectionCard } from '@/components/dashboard/SectionCard';
 import { Badge } from '@/components/dashboard/Badge';
 import { EmptyState } from '@/components/dashboard/EmptyState';
@@ -18,7 +17,6 @@ export default function AdminStudentsPage() {
 
   return (
     <div className="space-y-6">
-      <SampleDataBanner />
 
       <div>
         <h1 className="text-3xl font-bold text-[#1A2B4A]">Students</h1>

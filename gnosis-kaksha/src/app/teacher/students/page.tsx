@@ -19,7 +19,6 @@ import {
   Sparkles,
   ExternalLink,
 } from 'lucide-react';
-import { SampleDataBanner } from '@/components/dashboard/SampleDataBanner';
 import { SectionCard } from '@/components/dashboard/SectionCard';
 import { EmptyState } from '@/components/dashboard/EmptyState';
 import { Modal } from '@/components/ui/Modal';
@@ -92,7 +91,6 @@ export default function TeacherStudentsPage() {
 
   return (
     <div className="space-y-6">
-      <SampleDataBanner />
 
       {/* ── Page Header ── */}
       <div className="flex flex-wrap items-end justify-between gap-4">

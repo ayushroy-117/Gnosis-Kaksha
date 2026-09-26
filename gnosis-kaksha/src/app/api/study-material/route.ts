@@ -1,133 +1,149 @@
 import { NextRequest, NextResponse } from 'next/server';
-import {
-  getAllStudyMaterials,
-  addStudyMaterial,
-  deleteStudyMaterial,
-  incrementDownloadCount,
-  StudyMaterial,
-  MaterialCategory,
-} from '@/lib/study-materials';
+import { z } from 'zod';
+import { requirePermission, serverError } from '@/lib/authz';
+import { createAdminClient } from '@/lib/supabase/admin';
+import type { MaterialCategory, StudyMaterial } from '@/lib/study-materials';
 
 export const dynamic = 'force-dynamic';
 
+const MAX_BYTES = 10 * 1024 * 1024;
+const ALLOWED: Record<string, StudyMaterial['fileType']> = {
+  'application/pdf': 'PDF',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'DOCX',
+  'application/zip': 'ZIP',
+  'application/x-zip-compressed': 'ZIP',
+};
+const COLUMNS = 'id, title, description, class_number, subject, category, file_name, file_type, file_size, uploaded_by, downloads, is_featured, created_at';
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+function mapMaterial(r: any): StudyMaterial {
+  return {
+    id: r.id,
+    title: r.title,
+    description: r.description ?? '',
+    classNumber: r.class_number,
+    subject: r.subject,
+    category: r.category,
+    fileUrl: `/api/study-material/${r.id}/download`,
+    fileName: r.file_name ?? undefined,
+    fileSize: r.file_size ?? '',
+    fileType: r.file_type ?? 'PDF',
+    uploadedBy: r.uploaded_by,
+    createdAt: (r.created_at ?? '').slice(0, 10),
+    downloads: r.downloads ?? 0,
+    isFeatured: r.is_featured ?? false,
+  };
+}
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
+function humanSize(bytes: number) {
+  return bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+}
+
+// GET /api/study-material?classNumber=&subject=&category=&q= — public catalogue
+// (metadata only). Downloading a file requires signing in.
 export async function GET(req: NextRequest) {
+  const sp = req.nextUrl.searchParams;
   try {
-    const { searchParams } = new URL(req.url);
-    const classNum = searchParams.get('classNumber');
-    const subject = searchParams.get('subject');
-    const category = searchParams.get('category');
-    const q = searchParams.get('q');
-    const downloadId = searchParams.get('download');
+    let q = createAdminClient().from('study_materials').select(COLUMNS).order('created_at', { ascending: false });
+    const classNum = Number(sp.get('classNumber'));
+    if (classNum) q = q.eq('class_number', classNum);
+    const subject = sp.get('subject');
+    if (subject && subject !== 'all') q = q.ilike('subject', subject);
+    const category = sp.get('category');
+    if (category && category !== 'all') q = q.eq('category', category);
+    const { data, error } = await q;
+    if (error) throw error;
 
-    if (downloadId) {
-      const count = incrementDownloadCount(downloadId);
-      return NextResponse.json({ success: true, downloads: count });
-    }
-
-    let materials: StudyMaterial[] = getAllStudyMaterials();
-
-    if (classNum && classNum !== 'all') {
-      const num = parseInt(classNum, 10);
-      if (!isNaN(num)) {
-        materials = materials.filter((m) => m.classNumber === num);
-      }
-    }
-
-    if (subject && subject !== 'all') {
-      materials = materials.filter(
-        (m) => m.subject.toLowerCase() === subject.toLowerCase()
+    let materials = (data ?? []).map(mapMaterial);
+    const term = sp.get('q')?.trim().toLowerCase();
+    if (term) {
+      materials = materials.filter((m) =>
+        [m.title, m.description, m.subject, m.uploadedBy].some((v) => v.toLowerCase().includes(term))
       );
     }
-
-    if (category && category !== 'all') {
-      materials = materials.filter(
-        (m) => m.category.toLowerCase() === category.toLowerCase()
-      );
-    }
-
-    if (q) {
-      const lower = q.toLowerCase();
-      materials = materials.filter(
-        (m) =>
-          m.title.toLowerCase().includes(lower) ||
-          m.description.toLowerCase().includes(lower) ||
-          m.subject.toLowerCase().includes(lower) ||
-          m.uploadedBy.toLowerCase().includes(lower)
-      );
-    }
-
-    return NextResponse.json({
-      success: true,
-      count: materials.length,
-      materials,
-    });
-  } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Failed to fetch study materials';
-    return NextResponse.json({ success: false, error: msg }, { status: 500 });
+    return NextResponse.json({ success: true, count: materials.length, materials });
+  } catch (err) {
+    return serverError('study-material GET', err, 'Could not load study materials.');
   }
 }
 
+const metaSchema = z.object({
+  title: z.string().trim().min(3, 'Title must be at least 3 characters').max(200),
+  description: z.string().trim().max(2000).default(''),
+  classNumber: z.coerce.number().int().min(5).max(12),
+  subject: z.string().trim().min(1).max(60),
+  category: z.enum(['Notes', 'PYQ', 'Worksheet', 'Formula Sheet', 'Syllabus']),
+});
+
+// POST /api/study-material (multipart/form-data) — teacher/admin uploads a file.
 export async function POST(req: NextRequest) {
+  const auth = await requirePermission('manage_study_material');
+  if (!auth.ok) return auth.response;
+
+  let form: FormData;
   try {
-    const body = await req.json();
-    const {
-      title,
-      description,
-      classNumber,
-      subject,
-      category,
-      fileUrl,
-      fileSize,
-      fileType,
-      uploadedBy,
-    } = body;
+    form = await req.formData();
+  } catch {
+    return NextResponse.json({ success: false, error: 'Upload the file using the form.' }, { status: 400 });
+  }
+  const parsed = metaSchema.safeParse(Object.fromEntries(form.entries()));
+  if (!parsed.success) {
+    return NextResponse.json({ success: false, error: parsed.error.issues[0]?.message ?? 'Invalid details' }, { status: 400 });
+  }
+  const file = form.get('file');
+  if (!(file instanceof File) || file.size === 0) {
+    return NextResponse.json({ success: false, error: 'Choose a file to upload.' }, { status: 400 });
+  }
+  if (file.size > MAX_BYTES) {
+    return NextResponse.json({ success: false, error: 'File is larger than 10 MB.' }, { status: 413 });
+  }
+  const fileType = ALLOWED[file.type];
+  if (!fileType) {
+    return NextResponse.json({ success: false, error: 'Only PDF, DOCX or ZIP files can be uploaded.' }, { status: 415 });
+  }
 
-    if (!title || !classNumber || !subject || !category) {
-      return NextResponse.json(
-        { success: false, error: 'Title, Class, Subject, and Category are required.' },
-        { status: 400 }
-      );
-    }
-
-    const newMaterial = addStudyMaterial({
-      title: title.trim(),
-      description: description ? description.trim() : '',
-      classNumber: Number(classNumber),
-      subject: subject.trim(),
-      category: category as MaterialCategory,
-      fileUrl: fileUrl || '/materials/sample-document.pdf',
-      fileSize: fileSize || '2.5 MB',
-      fileType: fileType || 'PDF',
-      uploadedBy: uploadedBy || 'Gnosis Faculty',
-    });
-
-    return NextResponse.json({
-      success: true,
-      message: 'Study material uploaded successfully!',
-      material: newMaterial,
-    });
-  } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Failed to save study material';
-    return NextResponse.json({ success: false, error: msg }, { status: 500 });
+  try {
+    const bytes = Buffer.from(await file.arrayBuffer());
+    const m = parsed.data;
+    const { data, error } = await createAdminClient()
+      .from('study_materials')
+      .insert({
+        title: m.title,
+        description: m.description,
+        class_number: m.classNumber,
+        subject: m.subject,
+        category: m.category as MaterialCategory,
+        file_name: file.name.slice(0, 200),
+        file_type: fileType,
+        file_size: humanSize(file.size),
+        file_data: `\\x${bytes.toString('hex')}`,
+        uploaded_by: auth.user.fullName,
+        uploader_id: auth.user.id,
+      })
+      .select(COLUMNS)
+      .single();
+    if (error) throw error;
+    return NextResponse.json({ success: true, message: 'Study material published.', material: mapMaterial(data) }, { status: 201 });
+  } catch (err) {
+    return serverError('study-material POST', err, 'Could not save the file.');
   }
 }
 
+// DELETE /api/study-material?id=<uuid> — teacher/admin.
 export async function DELETE(req: NextRequest) {
+  const auth = await requirePermission('manage_study_material');
+  if (!auth.ok) return auth.response;
+  const id = req.nextUrl.searchParams.get('id');
+  if (!id || !/^[0-9a-f-]{36}$/i.test(id)) {
+    return NextResponse.json({ success: false, error: 'A valid id is required.' }, { status: 400 });
+  }
   try {
-    const { searchParams } = new URL(req.url);
-    const id = searchParams.get('id');
-
-    if (!id) {
-      return NextResponse.json(
-        { success: false, error: 'ID is required' },
-        { status: 400 }
-      );
-    }
-
-    const ok = deleteStudyMaterial(id);
-    return NextResponse.json({ success: ok });
-  } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Failed to delete study material';
-    return NextResponse.json({ success: false, error: msg }, { status: 500 });
+    const { data, error } = await createAdminClient().from('study_materials').delete().eq('id', id).select('id');
+    if (error) throw error;
+    if (!data?.length) return NextResponse.json({ success: false, error: 'Not found.' }, { status: 404 });
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    return serverError('study-material DELETE', err, 'Could not delete the material.');
   }
 }

@@ -1,77 +1,28 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { serverError } from '@/lib/authz';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { getAllNotices } from '@/lib/institute-store';
+import { getNotices, noticeAudiencesFor } from '@/lib/server/institute';
 
-// GET /api/notices — returns active notices, pinned first
-// Query params:
-//   ?audience=Students   — filter by audience ('All', 'Students', 'Parents', 'Staff')
-export async function GET(request: NextRequest) {
+export const dynamic = 'force-dynamic';
+
+// GET /api/notices — public notice board (pinned first). Staff-only notices excluded.
+export async function GET() {
   try {
-    const { searchParams } = new URL(request.url);
-    const audience = searchParams.get('audience');
-
-    const supabase = createAdminClient();
-    if (supabase) {
-      let query = supabase
-        .from('notices')
-        .select('*')
-        .eq('is_active', true)
-        .order('is_pinned', { ascending: false })
-        .order('published_at', { ascending: false });
-
-      if (audience && audience !== 'All') {
-        query = query.in('audience', ['All', audience]);
-      }
-
-      const { data, error } = await query;
-      if (!error && data && data.length > 0) {
-        return NextResponse.json({
-          notices: data.map((n: any) => ({
-            id: n.id,
-            title: n.title,
-            content: n.content,
-            published_at: n.published_at || n.created_at || new Date().toISOString(),
-            is_pinned: Boolean(n.is_pinned),
-            audience: n.audience,
-            external_url: n.external_url || null,
-          })),
-        });
-      }
-    }
-
-    // Local / fallback store
-    let local = getAllNotices();
-    if (audience && audience !== 'All') {
-      local = local.filter((n) => n.audience === 'All' || n.audience === audience);
-    }
-
+    const notices = await getNotices(createAdminClient(), noticeAudiencesFor('public'));
     return NextResponse.json({
-      notices: local.map((n) => ({
+      notices: notices.map((n) => ({
         id: n.id,
         title: n.title,
         content: n.content,
         published_at: n.date,
         is_pinned: n.pinned,
         audience: n.audience,
-        external_url: n.attachmentUrl || null,
-        attachmentName: n.attachmentName || null,
-        attachmentSize: n.attachmentSize || null,
+        external_url: n.attachmentUrl,
+        attachmentName: n.attachmentName,
+        attachmentSize: n.attachmentSize,
       })),
     });
-  } catch (error: any) {
-    console.error('Notices API error:', error);
-    return NextResponse.json({
-      notices: getAllNotices().map((n) => ({
-        id: n.id,
-        title: n.title,
-        content: n.content,
-        published_at: n.date,
-        is_pinned: n.pinned,
-        audience: n.audience,
-        external_url: n.attachmentUrl || null,
-        attachmentName: n.attachmentName || null,
-        attachmentSize: n.attachmentSize || null,
-      })),
-    });
+  } catch (err) {
+    return serverError('notices GET', err, 'Could not load notices.');
   }
 }

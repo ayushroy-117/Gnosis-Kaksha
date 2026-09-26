@@ -8,13 +8,10 @@ import { createAdminClient } from '@/lib/supabase/admin';
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const limit = parseInt(searchParams.get('limit') || '0');
+    const limit = Math.min(Math.max(parseInt(searchParams.get('limit') || '0') || 0, 0), 100);
     const tag = searchParams.get('tag');
 
     const supabase = createAdminClient();
-    if (!supabase) {
-      return NextResponse.json({ error: 'Database not configured' }, { status: 503 });
-    }
 
     let query = supabase
       .from('gallery_images')
@@ -37,8 +34,8 @@ export async function GET(request: NextRequest) {
     }
 
     return NextResponse.json({ images: data || [] });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Gallery API error:', error);
-    return NextResponse.json({ error: error?.message || 'Unexpected error' }, { status: 500 });
+    return NextResponse.json({ error: 'Could not load the gallery.' }, { status: 500 });
   }
 }

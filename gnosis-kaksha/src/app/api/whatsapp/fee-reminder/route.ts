@@ -5,7 +5,13 @@ import {
   getWhatsAppDirectUrl,
   formatWhatsAppPhone,
 } from '@/lib/whatsapp';
-import { getAllStudents, RosterStudent } from '@/lib/institute-store';
+import { requirePermission } from '@/lib/authz';
+import { createAdminClient } from '@/lib/supabase/admin';
+import { getRoster } from '@/lib/server/institute';
+import type { RosterStudent } from '@/lib/institute-data';
+
+const noPhone = (s: RosterStudent) =>
+  NextResponse.json({ success: false, error: `No mobile number on file for ${s.fullName}.` }, { status: 422 });
 
 export const dynamic = 'force-dynamic';
 
@@ -15,12 +21,14 @@ export const dynamic = 'force-dynamic';
  * - Otherwise returns list of all students with pending fees
  */
 export async function GET(req: NextRequest) {
+  const auth = await requirePermission('send_fee_reminders');
+  if (!auth.ok) return auth.response;
   try {
     const { searchParams } = new URL(req.url);
     const studentId = searchParams.get('studentId');
     const regNo = searchParams.get('regNo');
 
-    const allStudents = getAllStudents();
+    const allStudents = await getRoster(createAdminClient());
     const pendingStudents = allStudents.filter(
       (s) => s.status === 'active' && s.feeState === 'due' && s.amountDue > 0
     );
@@ -45,7 +53,8 @@ export async function GET(req: NextRequest) {
         parentName: student.parentName,
       });
 
-      const phone = student.mobile || '9876543210';
+      const phone = student.mobile;
+      if (!phone) return noPhone(student);
       const directUrl = getWhatsAppDirectUrl(phone, message);
 
       return NextResponse.json({
@@ -65,8 +74,8 @@ export async function GET(req: NextRequest) {
     }
 
     // List all pending students with reminder summaries
-    const list = pendingStudents.map((s) => {
-      const phone = s.mobile || '9876543210';
+    const list = pendingStudents.filter((s) => s.mobile).map((s) => {
+      const phone = s.mobile;
       const message = generateFeeReminderMessage({
         studentName: s.fullName,
         registrationNumber: s.registrationNumber,
@@ -93,8 +102,8 @@ export async function GET(req: NextRequest) {
       pendingStudents: list,
     });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Internal server error';
-    return NextResponse.json({ success: false, error: msg }, { status: 500 });
+    console.error('[whatsapp/fee-reminder]', error);
+    return NextResponse.json({ success: false, error: 'Could not prepare the reminder. Please try again.' }, { status: 500 });
   }
 }
 
@@ -108,9 +117,11 @@ export async function GET(req: NextRequest) {
  *    { batch: true, studentIds?: string[] }
  */
 export async function POST(req: NextRequest) {
+  const auth = await requirePermission('send_fee_reminders');
+  if (!auth.ok) return auth.response;
   try {
     const body = await req.json();
-    const allStudents = getAllStudents();
+    const allStudents = await getRoster(createAdminClient());
 
     // ── Single Student Reminder ──────────────────────────────────────────────
     if (!body.batch) {
@@ -127,7 +138,8 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      const phone = customPhone || student.mobile || '9876543210';
+      const phone = customPhone || student.mobile;
+      if (!phone) return noPhone(student);
       const message =
         customMessage ||
         generateFeeReminderMessage({
@@ -185,7 +197,8 @@ export async function POST(req: NextRequest) {
 
     const results = [];
     for (const student of targets) {
-      const phone = student.mobile || '9876543210';
+      if (!student.mobile) continue;
+      const phone = student.mobile;
       const message = generateFeeReminderMessage({
         studentName: student.fullName,
         registrationNumber: student.registrationNumber,
@@ -215,7 +228,7 @@ export async function POST(req: NextRequest) {
       results,
     });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Internal server error';
-    return NextResponse.json({ success: false, error: msg }, { status: 500 });
+    console.error('[whatsapp/fee-reminder]', error);
+    return NextResponse.json({ success: false, error: 'Could not prepare the reminder. Please try again.' }, { status: 500 });
   }
 }

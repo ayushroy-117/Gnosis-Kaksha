@@ -4,29 +4,26 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { LogOut, Menu, X } from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { Badge } from '@/components/dashboard/Badge';
+import { LoadingState } from '@/components/dashboard/PageState';
+import { NAVIGATION, PORTAL, type DashboardNavGroup } from '@/components/dashboard/navigation';
+import type { UserRole } from '@/lib/permissions';
 
-export interface DashboardNavItem {
-  label: string;
-  href: string;
-  icon: LucideIcon;
-}
+export type { DashboardNavItem } from '@/components/dashboard/navigation';
 
 interface DashboardLayoutProps {
-  navItems: DashboardNavItem[];
-  roleLabel: string;
-  portalName: string;
+  /** The dashboard area being rendered (/admin, /accountant, ...). */
+  area: UserRole;
   children: React.ReactNode;
 }
 
 function NavLinks({
-  navItems,
+  groups,
   pathname,
   onItemClick,
 }: {
-  navItems: DashboardNavItem[];
+  groups: DashboardNavGroup[];
   pathname: string;
   onItemClick?: () => void;
 }) {
@@ -34,59 +31,69 @@ function NavLinks({
     pathname === href || pathname.startsWith(`${href}/`);
 
   return (
-    <nav className="flex flex-col gap-1">
-      {navItems.map(({ label, href, icon: Icon }) => {
-        const active = isActive(href);
-        return (
-          <Link
-            key={href}
-            href={href}
-            onClick={onItemClick}
-            className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${
-              active
-                ? 'bg-[#1295D8] text-white shadow-xs'
-                : 'text-[#4A5568] hover:bg-[#CDE6F7] hover:text-[#2E5EAA]'
-            }`}
-          >
-            <Icon size={18} className="shrink-0" />
-            {label}
-          </Link>
-        );
-      })}
+    <nav className="flex flex-col gap-4 overflow-y-auto">
+      {groups.map((group, i) => (
+        <div key={group.title ?? i} className="flex flex-col gap-1">
+          {group.title && (
+            <p className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wide text-[#718096]">
+              {group.title}
+            </p>
+          )}
+          {group.items.map(({ label, href, icon: Icon }) => {
+            const active = isActive(href);
+            return (
+              <Link
+                key={href}
+                href={href}
+                onClick={onItemClick}
+                aria-current={active ? 'page' : undefined}
+                className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${
+                  active
+                    ? 'bg-[#1295D8] text-white shadow-xs'
+                    : 'text-[#4A5568] hover:bg-[#CDE6F7] hover:text-[#2E5EAA]'
+                }`}
+              >
+                <Icon size={18} className="shrink-0" />
+                {label}
+              </Link>
+            );
+          })}
+        </div>
+      ))}
     </nav>
   );
 }
 
-export function DashboardLayout({
-  navItems,
-  roleLabel,
-  portalName,
-  children,
-}: DashboardLayoutProps) {
+export function DashboardLayout({ area, children }: DashboardLayoutProps) {
   const router = useRouter();
   const pathname = usePathname();
   const { user, loading, signOut } = useAuth();
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
+  // The proxy already redirects signed-out visitors server-side; this covers a
+  // session that expires while the page is open.
   useEffect(() => {
     if (!loading && !user) {
-      router.push('/auth');
+      router.push(`/auth?next=${encodeURIComponent(pathname)}`);
     }
-  }, [user, loading, router]);
+  }, [user, loading, router, pathname]);
 
   if (loading) {
     return (
-      <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center bg-[#F7FAFC]">
-        <div className="text-center">
-          <div className="mx-auto mb-4 h-12 w-12 animate-spin rounded-full border-4 border-[#1295D8] border-t-transparent" />
-          <p className="text-gray-600">Loading...</p>
-        </div>
+      <div className="bg-[#F7FAFC]">
+        <LoadingState />
       </div>
     );
   }
 
   if (!user) return null;
+
+  // Admin keeps the full admin menu in every area it can open.
+  const navRole: UserRole = user.role === 'admin' ? 'admin' : area;
+  const groups = NAVIGATION[navRole];
+  const { portalName } = PORTAL[area];
+  const { roleLabel } = PORTAL[user.role];
 
   const handleSignOut = async () => {
     setIsSigningOut(true);
@@ -111,7 +118,7 @@ export function DashboardLayout({
             </p>
             <p className="mt-0.5 text-lg font-bold text-[#1A2B4A]">Gnosis Kaksha</p>
           </div>
-          <NavLinks navItems={navItems} pathname={pathname} />
+          <NavLinks groups={groups} pathname={pathname} />
           <div className="mt-auto pt-6">
             <button
               type="button"
@@ -186,7 +193,7 @@ export function DashboardLayout({
               </button>
             </div>
             <NavLinks
-              navItems={navItems}
+              groups={groups}
               pathname={pathname}
               onItemClick={() => setMobileOpen(false)}
             />

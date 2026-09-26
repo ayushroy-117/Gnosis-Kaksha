@@ -1,5 +1,4 @@
 import { UserPlus, GraduationCap, CreditCard } from 'lucide-react';
-import { SampleDataBanner } from '@/components/dashboard/SampleDataBanner';
 import { Badge } from '@/components/dashboard/Badge';
 import { EmptyState } from '@/components/dashboard/EmptyState';
 import { ApprovalActions } from './_components/ApprovalActions';
@@ -17,7 +16,6 @@ export default function AdminAdmissionsPage() {
 
   return (
     <div className="space-y-6">
-      <SampleDataBanner />
 
       <div>
         <h1 className="text-3xl font-bold text-[#1A2B4A]">Admissions</h1>

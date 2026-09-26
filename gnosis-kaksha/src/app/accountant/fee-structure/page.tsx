@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { Save } from 'lucide-react';
-import { SampleDataBanner } from '@/components/dashboard/SampleDataBanner';
 import { SectionCard } from '@/components/dashboard/SectionCard';
 import { Button } from '@/components/ui/Button';
 import { SUBJECT_FEES, EXAM_FEE, TSHIRT_FEE } from '@/lib/fees';
@@ -52,7 +51,6 @@ export default function FeeStructurePage() {
 
   return (
     <div className="space-y-6">
-      <SampleDataBanner />
 
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>

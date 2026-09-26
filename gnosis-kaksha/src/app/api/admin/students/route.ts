@@ -1,77 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requirePermission, serverError } from '@/lib/authz';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { getRoster } from '@/lib/server/institute';
 
-// GET  /api/admin/students           — list all students with optional filters
-// PATCH /api/admin/students          — update student status (approve/reject)
-//
-// Query params for GET:
-//   ?status=pending|active|rejected
-//   ?class=10
-//   ?q=search term (name, reg number, email)
+export const dynamic = 'force-dynamic';
 
+// GET /api/admin/students?status=pending|active|rejected&class=10&q=term
+// Full student records (incl. fees) — accountant/admin.
 export async function GET(request: NextRequest) {
+  const auth = await requirePermission('view_student_records');
+  if (!auth.ok) return auth.response;
   try {
-    const supabase = createAdminClient();
-    if (!supabase) return NextResponse.json({ error: 'DB not configured' }, { status: 503 });
-
-    const { searchParams } = new URL(request.url);
+    const { searchParams } = request.nextUrl;
     const status = searchParams.get('status');
-    const classNum = searchParams.get('class');
-    const q = searchParams.get('q');
+    const classNum = Number(searchParams.get('class')) || null;
+    const q = searchParams.get('q')?.trim().toLowerCase();
 
-    let query = supabase
-      .from('students')
-      .select('*')
-      .order('created_at', { ascending: false });
-
-    if (status) query = query.eq('status', status);
-    if (classNum) query = query.eq('class_number', parseInt(classNum));
+    let students = await getRoster(createAdminClient());
+    if (status) students = students.filter((s) => s.status === status);
+    if (classNum) students = students.filter((s) => s.classNumber === classNum);
     if (q) {
-      query = query.or(
-        `full_name.ilike.%${q}%,registration_number.ilike.%${q}%,email.ilike.%${q}%`
+      students = students.filter((s) =>
+        [s.fullName, s.registrationNumber, s.email].some((v) => v.toLowerCase().includes(q))
       );
     }
-
-    const { data, error } = await query;
-    if (error) return NextResponse.json({ error: 'Failed to fetch students' }, { status: 500 });
-
-    return NextResponse.json({ students: data || [], total: data?.length || 0 });
-  } catch (error: any) {
-    return NextResponse.json({ error: error?.message }, { status: 500 });
-  }
-}
-
-export async function PATCH(request: NextRequest) {
-  try {
-    const supabase = createAdminClient();
-    if (!supabase) return NextResponse.json({ error: 'DB not configured' }, { status: 503 });
-
-    const body = await request.json();
-    const { id, status } = body;
-
-    if (!id || !status) {
-      return NextResponse.json({ error: 'id and status are required' }, { status: 400 });
-    }
-
-    if (!['pending', 'active', 'rejected'].includes(status)) {
-      return NextResponse.json(
-        { error: 'status must be pending, active, or rejected' },
-        { status: 400 }
-      );
-    }
-
-    const { data, error } = await supabase
-      .from('students')
-      .update({ status, updated_at: new Date().toISOString() })
-      .eq('id', id)
-      .select('id, registration_number, full_name, status')
-      .single();
-
-    if (error) return NextResponse.json({ error: 'Failed to update student status' }, { status: 500 });
-    if (!data) return NextResponse.json({ error: 'Student not found' }, { status: 404 });
-
-    return NextResponse.json({ success: true, student: data });
-  } catch (error: any) {
-    return NextResponse.json({ error: error?.message }, { status: 500 });
+    return NextResponse.json({ students, total: students.length });
+  } catch (err) {
+    return serverError('admin/students GET', err, 'Could not load students.');
   }
 }

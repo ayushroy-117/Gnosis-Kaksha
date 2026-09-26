@@ -1,139 +1,121 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
+import { requirePermission, serverError } from '@/lib/authz';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { submitUpiPayment } from '@/lib/institute-store';
+import { mapStudent, mapTransaction, outstandingFor } from '@/lib/server/institute';
+import { currentPeriodLabel } from '@/lib/institute-data';
+import { normalizeUtr, UTR_PATTERN } from '@/lib/upi';
+import { rateLimit } from '@/lib/rate-limit';
 
-// POST /api/student/pay-fee
-// Body: { studentId, identifier, amount, utr, upiReference, method }
-// Now stores as PENDING — accountant must approve before it becomes 'paid'.
+const bodySchema = z.object({
+  utr: z.string().trim().min(1, 'Enter the UPI transaction ID from your payment app.'),
+  upiReference: z.string().trim().max(64).optional(),
+});
+
+// POST /api/student/pay-fee — the signed-in student submits the UPI transaction
+// ID for what they owe. Creates a PENDING transaction for the accountant to
+// review. The amount is computed server-side, never taken from the client.
 export async function POST(request: NextRequest) {
+  const auth = await requirePermission('submit_payment');
+  if (!auth.ok) return auth.response;
+  const { user } = auth;
+  if (!user.studentId) {
+    return NextResponse.json({ error: 'This account is not linked to a student record.' }, { status: 403 });
+  }
+  if (!rateLimit(`pay:${user.id}`, 10, 60 * 60_000)) {
+    return NextResponse.json({ error: 'Too many submissions. Please try again later.' }, { status: 429 });
+  }
+
+  const parsed = bodySchema.safeParse(await request.json().catch(() => null));
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 });
+  }
+  const utr = normalizeUtr(parsed.data.utr);
+  if (!UTR_PATTERN.test(utr)) {
+    return NextResponse.json(
+      { error: 'That doesn’t look like a UPI transaction ID. It is usually a 12-digit number shown in your payment app after paying.' },
+      { status: 400 }
+    );
+  }
+
   try {
-    const body = await request.json();
-    const { studentId, identifier, amount, utr, upiReference, method } = body;
+    const db = createAdminClient();
+    const { data: row, error: stuErr } = await db.from('students').select('*').eq('id', user.studentId).single();
+    if (stuErr || !row) return NextResponse.json({ error: 'Student record not found.' }, { status: 404 });
+    const student = mapStudent(row);
 
-    if (!amount || (!studentId && !identifier)) {
+    if (student.status === 'rejected') {
+      return NextResponse.json({ error: 'Your admission was not approved. Please contact the office.' }, { status: 409 });
+    }
+
+    const { count: pendingCount } = await db
+      .from('transactions')
+      .select('id', { count: 'exact', head: true })
+      .eq('student_id', student.id)
+      .eq('status', 'pending');
+    if ((pendingCount ?? 0) > 0) {
       return NextResponse.json(
-        { error: 'Missing required fields: student identifier and amount' },
-        { status: 400 }
+        { error: 'You already have a payment awaiting verification. Please wait for the office to review it.' },
+        { status: 409 }
       );
     }
 
-    if (!utr || utr.trim().length < 6) {
-      return NextResponse.json(
-        { error: 'Valid UPI UTR / Transaction ID is required (min 6 characters)' },
-        { status: 400 }
-      );
+    const { amount, purpose } = outstandingFor(student);
+    if (amount <= 0) {
+      return NextResponse.json({ error: 'You have no outstanding dues right now.' }, { status: 409 });
     }
 
-    if (!upiReference) {
-      return NextResponse.json(
-        { error: 'upiReference is required (the unique QR transaction reference)' },
-        { status: 400 }
-      );
-    }
+    const description =
+      purpose === 'admission'
+        ? 'Admission — Exam Fee, T-shirt & First Month'
+        : `Monthly Tuition — ${currentPeriodLabel()}`;
 
-    // ── Supabase path (if DB is configured) ─────────────────────────────────
-    const supabase = createAdminClient();
-    if (supabase) {
-      let studentQuery = supabase
-        .from('students')
-        .select('id, full_name, tuition_after_scholarship');
+    const { data: txn, error } = await db
+      .from('transactions')
+      .insert({
+        id: `PAY-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
+        student_id: student.id,
+        student_name: student.fullName,
+        description,
+        amount,
+        method: 'UPI',
+        purpose,
+        utr,
+        upi_reference: parsed.data.upiReference || null,
+        status: 'pending',
+        date: new Date().toISOString().slice(0, 10),
+        submitted_by: user.id,
+      })
+      .select('*')
+      .single();
 
-      if (studentId) {
-        studentQuery = studentQuery.eq('id', studentId);
-      } else if (identifier) {
-        const isRegNo = identifier.trim().toUpperCase().startsWith('GK-');
-        if (isRegNo) {
-          studentQuery = studentQuery.eq('registration_number', identifier.trim().toUpperCase());
-        } else {
-          studentQuery = studentQuery.eq('email', identifier.trim().toLowerCase());
-        }
+    if (error) {
+      if (error.code === '23505' && /one_pending/.test(error.message)) {
+        return NextResponse.json(
+          { error: 'You already have a payment awaiting verification. Please wait for the office to review it.' },
+          { status: 409 }
+        );
       }
-
-      const { data: student } = await studentQuery.single();
-
-      if (!student) {
-        return NextResponse.json({ error: 'Student not found' }, { status: 404 });
+      if (error.code === '23505') {
+        return NextResponse.json(
+          { error: 'This UPI transaction ID has already been submitted. Check the ID, or contact the office if you think this is a mistake.' },
+          { status: 409 }
+        );
       }
-
-      const today = new Date().toISOString().split('T')[0];
-      const paymentAmount = Number(amount);
-      const pendingId = `PAY-${Date.now().toString(36).toUpperCase()}`;
-
-      // Record as pending — NOT verified yet
-      const { data: receipt, error: txnError } = await supabase
-        .from('transactions')
-        .insert([
-          {
-            id: pendingId,
-            student_id: student.id,
-            student_name: student.full_name,
-            description: `Monthly Tuition — ${new Date().toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })} (Ref: ${upiReference}) (Pending Verification)`,
-            amount: paymentAmount,
-            method: method || 'UPI',
-            utr: utr.trim(),
-            status: 'pending',
-            date: today,
-          },
-        ])
-        .select()
-        .single();
-
-      if (txnError) {
-        console.error('Transaction insert error:', txnError);
-        return NextResponse.json({ error: 'Failed to record payment' }, { status: 500 });
-      }
-
-      // Touch student updated_at (fee_state in Supabase DB stays 'due' until accountant approves)
-      await supabase
-        .from('students')
-        .update({
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', student.id);
-
-      return NextResponse.json({
-        success: true,
-        message: 'Payment submitted. Pending accountant verification.',
-        receipt,
-        feeState: 'pending_verification',
-        pendingVerification: true,
-      });
+      throw error;
     }
 
-    // ── In-memory store path (no DB) ─────────────────────────────────────────
-    // Resolve studentId from identifier when no DB
-    let resolvedId = studentId;
-    if (!resolvedId && identifier) {
-      // import happens lazily — only used in demo/no-DB mode
-      const { getStudentByRegNo, getStudentByEmail, getStudentById } = await import('@/lib/institute-store');
-      const clean = identifier.trim();
-      const stu =
-        getStudentByRegNo(clean) ||
-        getStudentByEmail(clean) ||
-        getStudentById(clean);
-      if (!stu) {
-        return NextResponse.json({ error: 'Student not found' }, { status: 404 });
-      }
-      resolvedId = stu.id;
-    }
-
-    const receipt = submitUpiPayment(resolvedId, Number(amount), utr.trim(), upiReference);
-    if (!receipt) {
-      return NextResponse.json({ error: 'Student not found in store' }, { status: 404 });
-    }
+    await db
+      .from('students')
+      .update({ fee_state: 'pending_verification', updated_at: new Date().toISOString() })
+      .eq('id', student.id);
 
     return NextResponse.json({
       success: true,
-      message: 'Payment submitted. Pending accountant verification.',
-      receipt,
-      feeState: 'pending_verification',
-      pendingVerification: true,
-    });
-  } catch (error: any) {
-    console.error('Student pay-fee error:', error);
-    return NextResponse.json(
-      { error: error?.message || 'Failed to process fee payment' },
-      { status: 500 }
-    );
+      message: 'Payment submitted. The office will verify it shortly.',
+      transaction: mapTransaction(txn),
+    }, { status: 201 });
+  } catch (err) {
+    return serverError('student/pay-fee', err, 'Could not submit your payment. Please try again.');
   }
 }

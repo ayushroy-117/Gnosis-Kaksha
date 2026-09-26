@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { BookOpen, Plus, X, ClipboardCheck } from 'lucide-react';
-import { SampleDataBanner } from '@/components/dashboard/SampleDataBanner';
 import { SectionCard } from '@/components/dashboard/SectionCard';
 import { Badge } from '@/components/dashboard/Badge';
 import { EmptyState } from '@/components/dashboard/EmptyState';
@@ -71,7 +70,6 @@ export default function TeacherAllocationsPage() {
 
   return (
     <div className="space-y-6">
-      <SampleDataBanner />
 
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>

@@ -1,57 +1,48 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { authorizeAction } from '@/lib/authz';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { approveStudent, rejectStudent } from '@/lib/institute-store';
-
-// Pages whose numbers depend on the roster; refresh them all after a change.
-const AFFECTED_PATHS = [
-  '/admin/admissions',
-  '/admin/dashboard',
-  '/admin/students',
-  '/accountant/dashboard',
-  '/accountant/collections',
-  '/accountant/transactions',
-  '/accountant/reports',
-];
 
 type ActionResult = { ok: boolean; error?: string };
 
-async function setStatus(
-  id: string,
-  status: 'active' | 'rejected'
-): Promise<ActionResult> {
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+async function setStatus(id: string, status: 'active' | 'rejected'): Promise<ActionResult> {
+  const auth = await authorizeAction('manage_admissions');
+  if (!auth.ok) return { ok: false, error: auth.error };
+  if (!UUID.test(id)) return { ok: false, error: 'Invalid student id.' };
+
   try {
-    // 1. Update local persistent store
-    if (status === 'active') {
-      approveStudent(id);
-    } else {
-      rejectStudent(id);
+    const db = createAdminClient();
+    const { data, error } = await db
+      .from('students')
+      .update({ status, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .eq('status', 'pending')
+      .select('id');
+    if (error) throw error;
+    if (!data?.length) return { ok: false, error: 'This application was already decided. Refresh the page.' };
+
+    if (status === 'rejected') {
+      // Close any admission payment still waiting for review.
+      await db
+        .from('transactions')
+        .update({
+          status: 'rejected',
+          rejected_note: 'Admission application rejected',
+          verified_by: `${auth.user.fullName} (admin)`,
+          verified_at: new Date().toISOString().slice(0, 10),
+        })
+        .eq('student_id', id)
+        .eq('status', 'pending');
     }
 
-    // 2. If Supabase admin client is configured, also update Supabase
-    const supabase = createAdminClient();
-    if (supabase) {
-      try {
-        await supabase
-          .from('students')
-          .update({ status })
-          .eq('id', id);
-      } catch (sbErr) {
-        console.warn('Supabase sync warning:', sbErr);
-      }
-    }
-
-    for (const path of AFFECTED_PATHS) {
-      revalidatePath(path);
-    }
-
+    revalidatePath('/admin', 'layout');
     return { ok: true };
   } catch (err) {
-    return {
-      ok: false,
-      error: err instanceof Error ? err.message : 'Unexpected error',
-    };
+    console.error('[admissions action]', err);
+    return { ok: false, error: 'Could not update the application. Please try again.' };
   }
 }
 

@@ -20,7 +20,6 @@ import {
   FileSpreadsheet,
   BookOpen,
 } from 'lucide-react';
-import { SampleDataBanner } from '@/components/dashboard/SampleDataBanner';
 import { SectionCard } from '@/components/dashboard/SectionCard';
 import { EmptyState } from '@/components/dashboard/EmptyState';
 import { Button } from '@/components/ui/Button';
@@ -213,7 +212,6 @@ export default function TeacherAttendancePage() {
 
   return (
     <div className="space-y-6">
-      <SampleDataBanner />
 
       {/* ── Page Header (Hidden on Print) ── */}
       <div className="flex flex-wrap items-end justify-between gap-4 print:hidden">

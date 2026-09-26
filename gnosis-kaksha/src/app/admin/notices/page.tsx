@@ -14,7 +14,6 @@ import {
   Download,
   Link as LinkIcon,
 } from 'lucide-react';
-import { SampleDataBanner } from '@/components/dashboard/SampleDataBanner';
 import { Badge } from '@/components/dashboard/Badge';
 import { EmptyState } from '@/components/dashboard/EmptyState';
 import { Button } from '@/components/ui/Button';
@@ -174,7 +173,6 @@ export default function AdminNoticesPage() {
 
   return (
     <div className="space-y-6">
-      <SampleDataBanner />
 
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>

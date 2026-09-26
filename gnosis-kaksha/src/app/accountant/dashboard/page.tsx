@@ -8,7 +8,6 @@ import {
   CheckCircle2,
   Hourglass,
 } from 'lucide-react';
-import { SampleDataBanner } from '@/components/dashboard/SampleDataBanner';
 import { StatCard } from '@/components/dashboard/StatCard';
 import { SectionCard } from '@/components/dashboard/SectionCard';
 import { EmptyState } from '@/components/dashboard/EmptyState';
@@ -27,7 +26,6 @@ export default function AccountantDashboardPage() {
 
   return (
     <div className="space-y-6">
-      <SampleDataBanner />
 
       <div>
         <h1 className="text-3xl font-bold text-[#1A2B4A]">Finance Overview</h1>

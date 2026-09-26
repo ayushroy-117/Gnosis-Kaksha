@@ -2,7 +2,6 @@
 
 import { useState, useMemo } from 'react';
 import { Receipt, Download, Search, Filter, Printer, X, ShieldCheck } from 'lucide-react';
-import { SampleDataBanner } from '@/components/dashboard/SampleDataBanner';
 import { SectionCard } from '@/components/dashboard/SectionCard';
 import { Badge } from '@/components/dashboard/Badge';
 import { EmptyState } from '@/components/dashboard/EmptyState';
@@ -33,7 +32,6 @@ export default function AccountantTransactionsPage() {
 
   return (
     <div className="space-y-6">
-      <SampleDataBanner />
 
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>

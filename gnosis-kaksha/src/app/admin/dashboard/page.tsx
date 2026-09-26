@@ -1,6 +1,5 @@
 import Link from 'next/link';
 import { Users, UserCheck, UserPlus, Wallet, Megaphone, ArrowRight } from 'lucide-react';
-import { SampleDataBanner } from '@/components/dashboard/SampleDataBanner';
 import { StatCard } from '@/components/dashboard/StatCard';
 import { SectionCard } from '@/components/dashboard/SectionCard';
 import { Badge } from '@/components/dashboard/Badge';
@@ -24,7 +23,6 @@ export default function AdminDashboardPage() {
 
   return (
     <div className="space-y-6">
-      <SampleDataBanner />
 
       <div>
         <h1 className="text-3xl font-bold text-[#1A2B4A]">Admin Overview</h1>

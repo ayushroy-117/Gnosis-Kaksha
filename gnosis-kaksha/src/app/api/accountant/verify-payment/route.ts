@@ -1,169 +1,62 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
+import { requirePermission, serverError } from '@/lib/authz';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { approveUpiPayment, rejectUpiPayment } from '@/lib/institute-store';
+import { mapTransaction } from '@/lib/server/institute';
 
-// POST /api/accountant/verify-payment
-// Body: { transactionId, action: 'approve' | 'reject', rejectedNote?, verifiedBy? }
+const bodySchema = z.discriminatedUnion('action', [
+  z.object({ transactionId: z.string().min(1).max(100), action: z.literal('approve') }),
+  z.object({
+    transactionId: z.string().min(1).max(100),
+    action: z.literal('reject'),
+    rejectedNote: z.string().trim().min(3, 'Give a reason for the rejection (at least 3 characters).').max(500),
+  }),
+]);
+
+// POST /api/accountant/verify-payment — approve or reject a pending UPI submission.
+// Accountant or admin. Approval issues a receipt number, clears the dues and,
+// for an admission payment, activates the student's admission.
 export async function POST(request: NextRequest) {
+  const auth = await requirePermission('review_payments');
+  if (!auth.ok) return auth.response;
+
+  const parsed = bodySchema.safeParse(await request.json().catch(() => null));
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 });
+  }
+  const body = parsed.data;
+  const reviewer = `${auth.user.fullName} (${auth.user.role})`;
+
   try {
-    const body = await request.json();
-    const { transactionId, action, rejectedNote, verifiedBy } = body;
+    const db = createAdminClient();
+    const { data, error } = await db.rpc('review_payment', {
+      p_transaction_id: body.transactionId,
+      p_action: body.action,
+      p_note: body.action === 'reject' ? body.rejectedNote : null,
+      p_reviewer: reviewer,
+    });
 
-    if (!transactionId || !action) {
-      return NextResponse.json(
-        { error: 'transactionId and action are required' },
-        { status: 400 }
-      );
+    if (error) {
+      if (error.code === 'P0002') return NextResponse.json({ error: 'Transaction not found.' }, { status: 404 });
+      if (error.code === '55000') {
+        return NextResponse.json({ error: `This payment was already processed (${error.message.replace('transaction is already ', '')}). Refresh the queue.` }, { status: 409 });
+      }
+      if (error.code === '22023') return NextResponse.json({ error: error.message }, { status: 400 });
+      throw error;
     }
 
-    if (action !== 'approve' && action !== 'reject') {
-      return NextResponse.json(
-        { error: 'action must be "approve" or "reject"' },
-        { status: 400 }
-      );
-    }
-
-    if (action === 'reject' && (!rejectedNote || rejectedNote.trim().length < 3)) {
-      return NextResponse.json(
-        { error: 'A rejection reason (rejectedNote) is required' },
-        { status: 400 }
-      );
-    }
-
-    const now = new Date();
-    const verifiedAt = now.toISOString().split('T')[0];
-
-    // ── Supabase path ────────────────────────────────────────────────────────
-    const supabase = createAdminClient();
-    if (supabase) {
-      // Fetch the pending transaction
-      const { data: txn, error: fetchErr } = await supabase
-        .from('transactions')
-        .select('*, students(id, full_name)')
-        .eq('id', transactionId)
-        .single();
-
-      if (fetchErr || !txn) {
-        return NextResponse.json({ error: 'Transaction not found' }, { status: 404 });
-      }
-
-      if (txn.status !== 'pending') {
-        return NextResponse.json(
-          { error: `Transaction is already ${txn.status}` },
-          { status: 409 }
-        );
-      }
-
-      if (action === 'approve') {
-        // Count existing verified to generate receipt number
-        const { count } = await supabase
-          .from('transactions')
-          .select('id', { count: 'exact', head: true })
-          .eq('status', 'verified');
-
-        const rcptId = `RCPT-${now.getFullYear()}-${String((count || 0) + 1).padStart(4, '0')}`;
-        const cleanDesc = txn.description?.replace(' (Pending Verification)', '') ?? txn.description;
-
-        await supabase
-          .from('transactions')
-          .update({
-            id: rcptId,
-            status: 'verified',
-            description: `${cleanDesc} | Verified by ${verifiedBy || 'Accountant'} on ${verifiedAt}`,
-          })
-          .eq('id', transactionId);
-
-        await supabase
-          .from('students')
-          .update({
-            fee_state: 'paid',
-            amount_due: 0,
-            updated_at: now.toISOString(),
-          })
-          .eq('id', txn.student_id);
-
-        return NextResponse.json({
-          success: true,
-          action: 'approved',
-          receiptId: rcptId,
-          receipt: {
-            id: rcptId,
-            student_id: txn.student_id,
-            student_name: txn.student_name,
-            amount: txn.amount,
-            method: txn.method,
-            utr: txn.utr,
-            status: 'verified',
-            date: verifiedAt,
-            description: cleanDesc,
-          },
-          message: `Payment approved and receipt ${rcptId} generated.`,
-        });
-      } else {
-        // reject — DB check constraint is status in ('verified', 'pending', 'failed')
-        await supabase
-          .from('transactions')
-          .update({
-            status: 'failed',
-            description: `${txn.description || 'Payment'} | Rejection Note: ${rejectedNote.trim()} | Verified by ${verifiedBy || 'Accountant'}`,
-          })
-          .eq('id', transactionId);
-
-        await supabase
-          .from('students')
-          .update({
-            fee_state: 'due',
-            updated_at: now.toISOString(),
-          })
-          .eq('id', txn.student_id);
-
-        return NextResponse.json({
-          success: true,
-          action: 'rejected',
-          message: 'Payment rejected. Student has been notified to retry.',
-        });
-      }
-    }
-
-    // ── In-memory store path ──────────────────────────────────────────────────
-    if (action === 'approve') {
-      const result = approveUpiPayment(transactionId, verifiedBy || 'Accountant');
-      if (!result) {
-        return NextResponse.json(
-          { error: 'Transaction not found or already processed' },
-          { status: 404 }
-        );
-      }
-      return NextResponse.json({
-        success: true,
-        action: 'approved',
-        receiptId: result.transaction.id,
-        receipt: result.transaction,
-        message: `Payment approved and receipt ${result.transaction.id} generated.`,
-      });
-    } else {
-      const txn = rejectUpiPayment(
-        transactionId,
-        rejectedNote.trim(),
-        verifiedBy || 'Accountant'
-      );
-      if (!txn) {
-        return NextResponse.json(
-          { error: 'Transaction not found or already processed' },
-          { status: 404 }
-        );
-      }
-      return NextResponse.json({
-        success: true,
-        action: 'rejected',
-        message: 'Payment rejected. Student has been notified to retry.',
-      });
-    }
-  } catch (error: any) {
-    console.error('Verify payment error:', error);
-    return NextResponse.json(
-      { error: error?.message || 'Failed to process verification' },
-      { status: 500 }
-    );
+    const txn = mapTransaction(data);
+    return NextResponse.json({
+      success: true,
+      action: body.action === 'approve' ? 'approved' : 'rejected',
+      transaction: txn,
+      receiptId: txn.receiptNumber,
+      message:
+        body.action === 'approve'
+          ? `Payment approved. Receipt ${txn.receiptNumber} issued.`
+          : 'Payment rejected. The student will see the reason and can resubmit.',
+    });
+  } catch (err) {
+    return serverError('accountant/verify-payment', err, 'Could not process this payment. Please try again.');
   }
 }

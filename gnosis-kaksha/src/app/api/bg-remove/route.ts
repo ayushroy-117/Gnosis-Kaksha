@@ -1,10 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { clientIp, rateLimit } from '@/lib/rate-limit';
 
 // POST /api/bg-remove — proxies to remove.bg API
 // Body: multipart/form-data with:
 //   - image: File (JPG or PNG, max 5MB)
 //   - output_type: 'rgba' | 'white' (default: 'rgba')
 export async function POST(request: NextRequest) {
+  // remove.bg bills per call — keep the public tool from being abused.
+  if (!rateLimit(`bg-remove:${clientIp(request.headers)}`, 10, 60 * 60_000)) {
+    return NextResponse.json({ error: 'Hourly limit reached. Please try again later.' }, { status: 429 });
+  }
   try {
     const apiKey = process.env.REMOVE_BG_API_KEY;
     if (!apiKey) {

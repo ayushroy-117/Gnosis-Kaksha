@@ -2,7 +2,6 @@
 
 import { useMemo } from 'react';
 import { BarChart3, FileSpreadsheet, Printer, Users, TrendingUp, DollarSign } from 'lucide-react';
-import { SampleDataBanner } from '@/components/dashboard/SampleDataBanner';
 import { SectionCard } from '@/components/dashboard/SectionCard';
 import { getAccountantData, formatINR } from '@/lib/institute-data';
 import toast from 'react-hot-toast';
@@ -70,7 +69,6 @@ export default function AccountantReportsPage() {
 
   return (
     <div className="space-y-6">
-      <SampleDataBanner />
 
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>

@@ -12,7 +12,6 @@ import {
 import { StatCard } from '@/components/dashboard/StatCard';
 import { SectionCard } from '@/components/dashboard/SectionCard';
 import { Badge } from '@/components/dashboard/Badge';
-import { SampleDataBanner } from '@/components/dashboard/SampleDataBanner';
 import { getStudentData, formatINR, formatDate } from '@/lib/student-data';
 
 export const metadata = { title: 'Student Dashboard - Gnosis Kaksha' };
@@ -26,7 +25,6 @@ export default function StudentDashboardPage() {
 
   return (
     <div className="space-y-6">
-      <SampleDataBanner />
 
       {/* Welcome */}
       <div>
