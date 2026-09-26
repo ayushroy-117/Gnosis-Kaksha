@@ -1,0 +1,14 @@
+# Placed next to Supabase's official docker/docker-compose.yml on the VPS.
+# Binds every published port to localhost so nothing in the Supabase stack is
+# reachable from the internet. The app reaches the API gateway over the
+# docker network (http://api-gw:8000); humans reach Studio via an SSH tunnel:
+#   ssh -L 8000:127.0.0.1:8000 <vps>   then open http://localhost:8000
+# Requires Docker Compose >= 2.24 for the !override tag.
+services:
+  api-gw:
+    ports: !override
+      - "127.0.0.1:${API_GW_HTTP_PORT:-8000}:8000/tcp"
+  supavisor:
+    ports: !override
+      - "127.0.0.1:${POSTGRES_PORT}:5432"
+      - "127.0.0.1:${POOLER_PROXY_PORT_TRANSACTION}:6543"
