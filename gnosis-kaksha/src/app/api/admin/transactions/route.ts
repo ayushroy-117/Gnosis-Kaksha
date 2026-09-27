@@ -66,12 +66,16 @@ export async function POST(request: NextRequest) {
     if (branch && student.branchId !== branch) return NextResponse.json({ error: 'That student is at another branch.' }, { status: 403 });
 
     const id = `CTR-${Date.now().toString(36).toUpperCase()}`;
+    const lateFee = student.status === 'pending' ? 0 : Math.min(student.lateFeeDue, amount);
     const { error } = await db.from('transactions').insert({
       id,
       student_id: student.id,
       student_name: student.fullName,
-      description: description || `Monthly Tuition — ${currentPeriodLabel()} (counter)`,
+      description:
+        description ||
+        `Monthly Tuition — ${currentPeriodLabel()} (counter)${lateFee > 0 ? ` (incl. ₹${lateFee} late fee)` : ''}`,
       amount,
+      late_fee: lateFee,
       method,
       purpose: student.status === 'pending' ? 'admission' : 'tuition',
       utr,

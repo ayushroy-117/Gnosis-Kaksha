@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test';
 test.describe('public pages', () => {
   for (const path of ['/', '/notices', '/gallery', '/study-material', '/admission', '/auth']) {
     test(`${path} renders`, async ({ page }) => {
-      const res = await page.goto(path);
+      const res = await page.goto(path, { waitUntil: 'domcontentloaded' });
       expect(res?.status()).toBeLessThan(400);
       await expect(page.locator('body')).not.toContainText('Application error');
     });
@@ -19,7 +19,7 @@ test.describe('server-side guards', () => {
   }
 
   test('a forged localStorage "admin" user gets nothing', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/auth', { waitUntil: 'domcontentloaded' });
     await page.evaluate(() =>
       localStorage.setItem('gk_auth_user', JSON.stringify({ id: 'x', email: 'x@x', role: 'admin' }))
     );

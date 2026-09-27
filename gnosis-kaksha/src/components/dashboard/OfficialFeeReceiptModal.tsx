@@ -19,6 +19,8 @@ export interface FeeReceiptData {
   utr?: string;
   /** 'verified' / 'paid' (or omitted) = cleared; anything else is shown as not yet verified. */
   status?: string;
+  /** Part of amount that was a late payment fine. */
+  lateFee?: number;
 }
 
 /** Receipt number to show: the official one if issued, else the internal reference. */
@@ -40,6 +42,9 @@ export interface FeeReceiptStudent {
   parentName?: string;
   mobile?: string;
   address?: string;
+  /** Student photo / signature image URLs (or data: URLs on the admission page). */
+  photoUrl?: string | null;
+  signatureUrl?: string | null;
 }
 
 export interface ReceiptSheetProps {
@@ -130,14 +135,21 @@ function buildItems(receipt: FeeReceiptData) {
     return items;
   }
 
-  return [
+  const lateFee = Math.min(Math.max(receipt.lateFee ?? 0, 0), receipt.amount);
+  const items = [
     {
       sl: '01',
       head: 'Monthly Batch Tuition Fee',
-      purpose: receipt.description?.replace(' (Pending Verification)', '') || 'Academic coaching & classroom lectures',
-      amount: receipt.amount,
+      purpose:
+        receipt.description?.replace(' (Pending Verification)', '').replace(/ \(incl\. ₹[\d,]+ late fee\)/, '') ||
+        'Academic coaching & classroom lectures',
+      amount: receipt.amount - lateFee,
     },
   ];
+  if (lateFee > 0) {
+    items.push({ sl: '02', head: 'Late Payment Fine', purpose: 'Monthly fee paid after the 10th', amount: lateFee });
+  }
+  return items;
 }
 
 /**
@@ -221,7 +233,8 @@ export function ReceiptSheet({
           </div>
         </div>
 
-        {/* ── 3. Student & Payment Details Table ── */}
+        {/* ── 3. Student & Payment Details Table (+ photo) ── */}
+        <div className="flex items-stretch gap-2">
         <table className="w-full border-collapse border border-gray-400 text-[10.5px]">
           <tbody>
             <tr className="border-b border-gray-300">
@@ -268,6 +281,13 @@ export function ReceiptSheet({
             </tr>
           </tbody>
         </table>
+        {student.photoUrl && (
+          <div className="w-[74px] shrink-0 border border-gray-400 bg-white p-0.5">
+            {/* eslint-disable-next-line @next/next/no-img-element -- auth-gated API image / data URL */}
+            <img src={student.photoUrl} alt={`Photo of ${student.fullName}`} className="h-full w-full object-cover" />
+          </div>
+        )}
+        </div>
 
         {/* ── 4. Itemized Fee Table ── */}
         <table className="w-full border-collapse border-2 border-black text-[10.5px]">
@@ -381,6 +401,21 @@ export function ReceiptSheet({
               </div>
             </div>
           </div>
+
+          {/* Student's signature */}
+          {student.signatureUrl && (
+            <div className="text-center shrink-0 w-32">
+              <div className="h-8 flex items-center justify-center">
+                {/* eslint-disable-next-line @next/next/no-img-element -- auth-gated API image / data URL */}
+                <img src={student.signatureUrl} alt="Student's signature" className="max-h-8 max-w-full object-contain" />
+              </div>
+              <div className="border-t border-black pt-1">
+                <p className="text-[8px] font-bold uppercase tracking-wider text-black font-sans leading-none">
+                  Student&apos;s Signature
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Authorized Signatory */}
           <div className="text-center shrink-0 w-36">

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { requirePermission, serverError } from '@/lib/authz';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { mapStudent, mapTransaction, outstandingFor } from '@/lib/server/institute';
+import { ensureBilling, mapStudent, mapTransaction, outstandingFor } from '@/lib/server/institute';
 import { currentPeriodLabel } from '@/lib/institute-data';
 import { normalizeUtr, UTR_PATTERN } from '@/lib/upi';
 import { rateLimit } from '@/lib/rate-limit';
@@ -40,6 +40,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const db = createAdminClient();
+    await ensureBilling(db);
     const { data: row, error: stuErr } = await db.from('students').select('*').eq('id', user.studentId).single();
     if (stuErr || !row) return NextResponse.json({ error: 'Student record not found.' }, { status: 404 });
     const student = mapStudent(row);
@@ -60,7 +61,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { amount, purpose } = outstandingFor(student);
+    const { amount, purpose, lateFee } = outstandingFor(student);
     if (amount <= 0) {
       return NextResponse.json({ error: 'You have no outstanding dues right now.' }, { status: 409 });
     }
@@ -68,7 +69,7 @@ export async function POST(request: NextRequest) {
     const description =
       purpose === 'admission'
         ? 'Admission — Exam Fee, T-shirt & First Month'
-        : `Monthly Tuition — ${currentPeriodLabel()}`;
+        : `Monthly Tuition — ${currentPeriodLabel()}${lateFee > 0 ? ` (incl. ₹${lateFee} late fee)` : ''}`;
 
     const { data: txn, error } = await db
       .from('transactions')
@@ -78,6 +79,7 @@ export async function POST(request: NextRequest) {
         student_name: student.fullName,
         description,
         amount,
+        late_fee: lateFee,
         method: 'UPI',
         purpose,
         utr,

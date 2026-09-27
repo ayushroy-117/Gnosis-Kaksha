@@ -94,8 +94,8 @@ export default function RefundPage() {
                 query@gnosiskaksha.in
               </a>{' '}
               or call{' '}
-              <a href="tel:+918474020124" className="text-[#1295D8] hover:underline">
-                +91 8474020124
+              <a href="tel:+919954586520" className="text-[#1295D8] hover:underline">
+                +91 9954586520
               </a>
               . All disputes are subject to the jurisdiction of the Karimganj Court, Assam, India.
             </p>

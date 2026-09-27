@@ -20,6 +20,11 @@ import { formatDate } from '@/lib/student-data';
 import { useStudentPortal } from '@/hooks/useStudentPortal';
 import { LoadingState, ErrorState } from '@/components/dashboard/PageState';
 import { QRCodeSVG } from 'qrcode.react';
+import toast from 'react-hot-toast';
+import { ImageUpload } from '@/components/ui/ImageUpload';
+import { apiFetch } from '@/hooks/useApi';
+import { useAuth } from '@/hooks/useAuth';
+import { OFFICE_PHONE_DISPLAY } from '@/lib/institute-contact';
 
 /* ─── Field component for Profile Section ─── */
 function ProfileField({ label, value }: { label: string; value: string }) {
@@ -106,7 +111,9 @@ const RULES = [
 ];
 
 export default function StudentProfilePage() {
-  const { data, error, loading, reload } = useStudentPortal();
+  const { data, error, loading, reload, setData } = useStudentPortal();
+  const { user } = useAuth();
+  const [savingDoc, setSavingDoc] = useState<'photo' | 'signature' | null>(null);
   const [activeTab, setActiveTab] = useState<'both' | 'front' | 'back'>('both');
   const [isFlipped, setIsFlipped] = useState(false);
 
@@ -118,6 +125,24 @@ export default function StudentProfilePage() {
   if (error) return <ErrorState message={error.message} onRetry={reload} />;
   if (!data) return null;
   const { profile } = data;
+  // Students may change these until the admission is approved; the admin any time.
+  const canEditDocs = profile.canEditDocuments || user?.role === 'admin';
+
+  const saveDocument = async (kind: 'photo' | 'signature', dataUrl: string) => {
+    setSavingDoc(kind);
+    try {
+      const res = await apiFetch<{ url: string }>(`/api/students/${profile.id}/documents/${kind}`, {
+        method: 'PUT',
+        json: { dataUrl },
+      });
+      setData((d) => (d ? { ...d, profile: { ...d.profile, [kind === 'photo' ? 'photoUrl' : 'signatureUrl']: res.url } } : d));
+      toast.success(kind === 'photo' ? 'Photo updated.' : 'Signature updated.');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Upload failed.');
+    } finally {
+      setSavingDoc(null);
+    }
+  };
   // Only an approved (active) student gets a valid, printable ID card.
   const isActive = profile.enrollmentStatus === 'active';
   const statusBadge = isActive
@@ -445,6 +470,19 @@ export default function StudentProfilePage() {
 
               {/* ── Footer: Authorized Signatory & Dynamic QR Code ── */}
               <div className="relative z-10 bg-gradient-to-b from-[#F8FAFC] to-[#EFF6FF] px-4 py-2.5 flex items-end justify-between border-t border-slate-100">
+                {/* Student's signature */}
+                {profile.signatureUrl && (
+                  <div className="flex flex-col items-center">
+                    {/* eslint-disable-next-line @next/next/no-img-element -- auth-gated API image */}
+                    <img src={profile.signatureUrl} alt="Student's signature" className="h-[22px] max-w-[90px] object-contain" />
+                    <div className="border-t border-slate-400 pt-0.5 w-24 text-center mt-0.5">
+                      <p className="text-[7.5px] font-bold uppercase tracking-wider text-slate-700 leading-none">
+                        Student&apos;s Signature
+                      </p>
+                    </div>
+                  </div>
+                )}
+
                 {/* Authorized Signatory */}
                 <div className="flex flex-col items-center">
                   <AutoSignature />
@@ -477,7 +515,7 @@ export default function StudentProfilePage() {
               {/* ── Bottom Strip ── */}
               <div className="relative z-10 bg-[#0F172A] px-3 py-1 flex items-center justify-between text-[7.5px] text-slate-300">
                 <span>web: gnosiskaksha.in</span>
-                <span>helpline: +91 84740 20124</span>
+                <span>helpline: {OFFICE_PHONE_DISPLAY}</span>
               </div>
             </div>
           )}
@@ -530,7 +568,7 @@ export default function StudentProfilePage() {
                   Gnosis Kaksha, Main Road, Ramkrishna Nagar, Karimganj, Assam – 788713
                 </p>
                 <p className="text-[7px] text-amber-700 leading-tight mt-0.5 font-mono">
-                  Phone: +91 84740 20124 • Email: query@gnosiskaksha.in
+                  Phone: {OFFICE_PHONE_DISPLAY} • Email: query@gnosiskaksha.in
                 </p>
               </div>
 
@@ -593,8 +631,13 @@ export default function StudentProfilePage() {
       <div className="print:hidden space-y-6">
         {/* Quick Identity Summary Banner */}
         <div className="flex flex-col items-center gap-4 rounded-xl border border-gray-200 bg-white p-6 shadow-sm sm:flex-row sm:items-center">
-          <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-full bg-[#CDE6F7] text-[#1295D8] border-2 border-white shadow-sm">
-            <User size={40} />
+          <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#CDE6F7] text-[#1295D8] border-2 border-white shadow-sm">
+            {profile.photoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element -- auth-gated API image
+              <img src={profile.photoUrl} alt={profile.fullName} className="h-full w-full object-cover" />
+            ) : (
+              <User size={40} />
+            )}
           </div>
           <div className="flex-1 text-center sm:text-left">
             <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
@@ -617,6 +660,36 @@ export default function StudentProfilePage() {
         </div>
 
         {/* Detailed Grid: Academic & Guardian Information */}
+        <SectionCard
+          title="Photo & Signature"
+          description={
+            canEditDocs
+              ? 'Used on your ID card and fee receipts. You can change them until your admission is approved.'
+              : 'Used on your ID card and fee receipts. To change them, contact the institute office.'
+          }
+        >
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+            <ImageUpload
+              kind="photo"
+              label="Photo"
+              hint={profile.photoUrl ? undefined : 'No photo yet — your ID card needs one.'}
+              value={profile.photoUrl}
+              onChange={(d) => saveDocument('photo', d)}
+              disabled={!canEditDocs}
+              busy={savingDoc === 'photo'}
+            />
+            <ImageUpload
+              kind="signature"
+              label="Signature"
+              hint={profile.signatureUrl ? undefined : 'No signature yet.'}
+              value={profile.signatureUrl}
+              onChange={(d) => saveDocument('signature', d)}
+              disabled={!canEditDocs}
+              busy={savingDoc === 'signature'}
+            />
+          </div>
+        </SectionCard>
+
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <SectionCard title="Academic & Enrollment Details">
             <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">

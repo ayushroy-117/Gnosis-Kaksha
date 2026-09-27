@@ -128,6 +128,9 @@ export default function StudentFeesPage() {
       tone: 'discount' as const,
     },
     { label: 'Tuition after scholarship', value: feeStatus.tuitionAfterScholarship, tone: 'subtotal' as const },
+    ...(feeStatus.lateFee > 0
+      ? [{ label: 'Late payment fine (paid after the 10th)', value: feeStatus.lateFee, tone: 'default' as const }]
+      : []),
     ...(isAdmission
       ? [
           { label: 'Examination fee (Annual)', value: feeStatus.examFee, tone: 'default' as const },
@@ -167,7 +170,9 @@ export default function StudentFeesPage() {
                   ? 'Payment submitted — awaiting verification by the office'
                   : isAdmission
                     ? 'Admission fee — first month, exam fee & T-shirt'
-                    : `Due by ${formatDate(feeStatus.nextDueDate)}`}
+                    : feeStatus.lateFee > 0
+                      ? `Includes ₹${feeStatus.lateFee} late fine — pay now to avoid another next month`
+                      : `Due by ${formatDate(feeStatus.nextDueDate)} · ₹100 late fine after the 10th`}
             </p>
           </div>
         </div>
@@ -533,6 +538,8 @@ export default function StudentFeesPage() {
             parentName: profile.parentName,
             mobile: profile.mobile,
             address: profile.address,
+            photoUrl: profile.photoUrl,
+            signatureUrl: profile.signatureUrl,
           }}
           onClose={() => setActiveReceipt(null)}
           copyType="STUDENT COPY"

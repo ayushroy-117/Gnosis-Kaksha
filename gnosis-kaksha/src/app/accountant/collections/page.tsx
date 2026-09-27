@@ -410,7 +410,10 @@ export default function AccountantCollectionsPage() {
                       ) : s.feeState === 'pending_verification' ? (
                         <Badge tone="amber">Pending Verification</Badge>
                       ) : (
-                        <Badge tone="red">Due · {formatINR(s.amountDue)}</Badge>
+                        <Badge tone="red">
+                          Due · {formatINR(s.amountDue)}
+                          {s.lateFeeDue > 0 && <> (incl. {formatINR(s.lateFeeDue)} late fine)</>}
+                        </Badge>
                       )}
                     </td>
                     <td className="px-6 py-4 text-right">
@@ -578,6 +581,8 @@ export default function AccountantCollectionsPage() {
             parentName: receiptStudent?.parentName,
             mobile: receiptStudent?.mobile,
             address: receiptStudent?.address,
+            photoUrl: receiptStudent?.photoUrl,
+            signatureUrl: receiptStudent?.signatureUrl,
           }}
           onClose={() => setApprovedReceipt(null)}
           copyType="OFFICE COPY"

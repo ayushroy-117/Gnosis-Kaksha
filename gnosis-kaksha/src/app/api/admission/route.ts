@@ -6,6 +6,7 @@ import { serverError } from '@/lib/authz';
 import { calculateBill, calculateScholarship, SUBJECT_FEES } from '@/lib/fees';
 import { normalizeUtr, UTR_PATTERN } from '@/lib/upi';
 import { clientIp, rateLimit } from '@/lib/rate-limit';
+import { parseImageDataUrl, saveStudentDocument } from '@/lib/server/student-documents';
 
 const phone = z.string().trim().regex(/^(\+91[\s-]?)?[6-9]\d{9}$/, 'Enter a valid 10-digit mobile number');
 
@@ -49,12 +50,18 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Too many applications from this network. Please try again in an hour.' }, { status: 429 });
   }
 
-  const parsed = admissionSchema.safeParse(await request.json().catch(() => null));
+  const raw = await request.json().catch(() => null);
+  const parsed = admissionSchema.safeParse(raw);
   if (!parsed.success) {
     const issue = parsed.error.issues[0];
     return NextResponse.json({ error: issue?.message ?? 'Please check the form.', field: issue?.path?.[0] }, { status: 400 });
   }
   const d = parsed.data;
+  const photo = parseImageDataUrl('photo', raw?.photo);
+  if ('error' in photo) return NextResponse.json({ error: photo.error, field: 'photo' }, { status: 400 });
+  const signature = parseImageDataUrl('signature', raw?.signature);
+  if ('error' in signature) return NextResponse.json({ error: signature.error, field: 'signature' }, { status: 400 });
+
   const utr = normalizeUtr(d.upiUtr);
   if (!UTR_PATTERN.test(utr)) {
     return NextResponse.json(
@@ -153,6 +160,10 @@ export async function POST(request: NextRequest) {
     if (stuErr || !student) throw stuErr ?? new Error('student insert returned nothing');
     studentId = student.id;
 
+    // Photo + signature (deleted with the student on rollback)
+    await saveStudentDocument(db, student.id, 'photo', photo, `${d.fullName} (admission form)`);
+    await saveStudentDocument(db, student.id, 'signature', signature, `${d.fullName} (admission form)`);
+
     // 3. Link account -> student
     const { error: linkErr } = await db
       .from('profiles')
@@ -207,6 +218,8 @@ export async function POST(request: NextRequest) {
           mandatoryCharges: billing.mandatoryCharges,
           finalPayable: billing.finalPayable,
           admissionDate: student.admission_date,
+          photoUrl: `/api/students/${student.id}/documents/photo?v=${Date.now()}`,
+          signatureUrl: `/api/students/${student.id}/documents/signature?v=${Date.now()}`,
         },
         receipt: { id: txnId, utr, amount: billing.finalPayable, date: today, status: 'pending' },
       },

@@ -18,6 +18,9 @@ export interface StudentProfile {
   email: string;
   address: string;
   photoUrl: string | null;
+  signatureUrl: string | null;
+  /** The student may still upload/replace photo and signature (admission not yet approved). */
+  canEditDocuments: boolean;
   admissionDate: string;
   enrollmentStatus: EnrollmentStatus;
 }
@@ -36,6 +39,7 @@ export interface FeePayment {
   amount: number;
   method: string;
   status: 'paid' | 'pending' | 'rejected';
+  lateFee: number;
   utr?: string;
   rejectedNote?: string;
 }
@@ -48,6 +52,8 @@ export interface FeeStatus {
   examFee: number;
   tshirtFee: number;
   mandatoryCharges: number;
+  /** Late fee included in finalPayable. */
+  lateFee: number;
   finalPayable: number;
   status: 'paid' | 'due' | 'pending_verification';
   nextDueDate: string;

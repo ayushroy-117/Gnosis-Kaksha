@@ -2,6 +2,7 @@
  * Full loop: applicant registers + pays via UPI -> submits transaction ID ->
  * portal locked -> accountant approves -> student gains access with receipt.
  */
+import path from 'node:path';
 import { expect, test } from '@playwright/test';
 import { loginAs, randomUtr, requireStaff } from './helpers/auth';
 
@@ -49,6 +50,11 @@ test('applicant submits admission with a UPI transaction ID', async ({ page }) =
   await page.getByRole('button', { name: /Next Step/ }).click();
 
   await page.getByLabel('Document Type').selectOption('marksheet');
+  const files = page.locator('input[type="file"]');
+  await files.nth(0).setInputFiles(path.join(__dirname, 'fixtures/student-photo.jpg'));
+  await files.nth(1).setInputFiles(path.join(__dirname, 'fixtures/student-signature.png'));
+  await expect(page.getByRole('img', { name: 'Student photo' })).toBeVisible();
+  await expect(page.getByRole('img', { name: 'Student signature' })).toBeVisible();
   await page.getByRole('button', { name: /Next Step/ }).click();
 
   await expect(page.getByRole('heading', { name: 'Admission Fee & UPI Payment' })).toBeVisible();

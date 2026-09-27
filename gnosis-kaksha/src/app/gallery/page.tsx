@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { useState, useEffect } from 'react';
 import { Modal } from '@/components/ui/Modal';
 import { X } from 'lucide-react';
@@ -98,11 +99,15 @@ export default function Gallery() {
                 onClick={() => setSelectedImage(item)}
                 className="relative rounded-lg overflow-hidden group cursor-pointer bg-white border border-gray-200 shadow-sm hover:shadow-md"
               >
-                <img
-                  src={item.image}
-                  alt={item.caption}
-                  className="w-full aspect-square object-cover group-hover:scale-110 transition duration-300"
-                />
+                <div className="relative w-full aspect-square">
+                  <Image
+                    src={item.image}
+                    alt={item.caption}
+                    fill
+                    sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                    className="object-cover group-hover:scale-110 transition duration-300"
+                  />
+                </div>
                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-4">
                   <p className="text-white font-semibold">
                     {item.caption}
@@ -122,10 +127,13 @@ export default function Gallery() {
       >
         {selectedImage && (
           <div>
-            <img
+            <Image
               src={selectedImage.image}
               alt={selectedImage.caption}
-              className="w-full rounded-lg mb-4"
+              width={1920}
+              height={1080}
+              sizes="(max-width: 768px) 100vw, 640px"
+              className="w-full h-auto rounded-lg mb-4"
             />
             <h3 className="text-2xl font-bold mb-2 text-[#1A2B4A]">{selectedImage.caption}</h3>
             <p className="text-[#4A5568]">

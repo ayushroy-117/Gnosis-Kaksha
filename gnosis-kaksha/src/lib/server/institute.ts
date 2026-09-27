@@ -17,6 +17,7 @@ import {
   type Transaction,
 } from '@/lib/institute-data';
 import type { FeePayment, StudentData, StudentNotice } from '@/lib/student-data';
+import { documentUrls } from '@/lib/server/student-documents';
 
 // ---------------------------------------------------------------------------
 // Row mappers (DB snake_case -> app camelCase)
@@ -44,6 +45,7 @@ export function mapStudent(r: any): RosterStudent {
     mandatoryCharges: Number(r.mandatory_charges ?? 0),
     feeState: r.fee_state,
     amountDue: Number(r.amount_due ?? 0),
+    lateFeeDue: Number(r.late_fee_due ?? 0),
     admissionDate: r.admission_date,
     status: r.status,
     tshirtSize: r.tshirt_size ?? undefined,
@@ -63,6 +65,7 @@ export function mapTransaction(r: any): Transaction {
     registrationNumber: r.students?.registration_number ?? undefined,
     description: r.description,
     amount: Number(r.amount),
+    lateFee: Number(r.late_fee ?? 0),
     method: r.method,
     purpose: r.purpose ?? 'tuition',
     utr: r.utr ?? undefined,
@@ -108,8 +111,8 @@ export function mapAllocation(r: any): SubjectAllocationRequest {
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
 function toTeacherView(s: RosterStudent): TeacherRosterStudent {
-  const { id, branchId, branchName, registrationNumber, fullName, classNumber, stream, board, subjects, parentName, mobile, status, admissionDate } = s;
-  return { id, branchId, branchName, registrationNumber, fullName, classNumber, stream, board, subjects, parentName, mobile, status, admissionDate };
+  const { id, branchId, branchName, registrationNumber, fullName, classNumber, stream, board, subjects, parentName, mobile, status, admissionDate, photoUrl } = s;
+  return { id, branchId, branchName, registrationNumber, fullName, classNumber, stream, board, subjects, parentName, mobile, status, admissionDate, photoUrl };
 }
 
 // ---------------------------------------------------------------------------
@@ -123,8 +126,32 @@ async function must<T>(p: PromiseLike<{ data: T | null; error: unknown }>): Prom
 }
 
 export async function getRoster(db: SupabaseClient): Promise<RosterStudent[]> {
-  const rows = await must(db.from('students').select('*, branches(name)').order('created_at', { ascending: false }));
-  return (rows as unknown[]).map(mapStudent);
+  const [rows, docs] = await Promise.all([
+    must(db.from('students').select('*, branches(name)').order('created_at', { ascending: false })),
+    documentUrls(db),
+  ]);
+  return (rows as unknown[]).map((r) => {
+    const s = mapStudent(r);
+    s.photoUrl = docs.get(s.id)?.photo ?? null;
+    s.signatureUrl = docs.get(s.id)?.signature ?? null;
+    return s;
+  });
+}
+
+let lastBilling = 0;
+/**
+ * Bill the month's tuition (on/after the 1st) and apply late fees (after the
+ * 10th). The DB function is idempotent; this just avoids calling it on every
+ * request. Failures are logged, never block the page.
+ */
+export async function ensureBilling(db: SupabaseClient): Promise<void> {
+  if (Date.now() - lastBilling < 60_000) return;
+  lastBilling = Date.now();
+  const { error } = await db.rpc('run_monthly_billing');
+  if (error) {
+    lastBilling = 0;
+    console.error('[billing] run_monthly_billing failed', error);
+  }
 }
 
 export async function getTransactions(db: SupabaseClient, studentId?: string): Promise<Transaction[]> {
@@ -171,6 +198,7 @@ function monthKey(date = new Date()): string {
 // ---------------------------------------------------------------------------
 
 export async function buildAdminData(db: SupabaseClient): Promise<AdminData> {
+  await ensureBilling(db);
   const [roster, notices, pending, profiles] = await Promise.all([
     getRoster(db),
     getNotices(db, noticeAudiencesFor('staff')),
@@ -228,6 +256,7 @@ export async function studentInScope(db: SupabaseClient, user: SessionUser, stud
 }
 
 export async function buildAccountantData(db: SupabaseClient, user: SessionUser): Promise<AccountantData> {
+  await ensureBilling(db);
   const branch = staffBranchScope(user);
   const [allRoster, allTransactions] = await Promise.all([getRoster(db), getTransactions(db)]);
   const roster = branch ? allRoster.filter((s) => s.branchId === branch) : allRoster;
@@ -346,11 +375,12 @@ const SUBJECT_TEACHERS: Record<string, string> = {
  * admission payment (first month + exam + T-shirt) is due; afterwards the
  * running tuition balance.
  */
-export function outstandingFor(s: RosterStudent): { amount: number; purpose: 'admission' | 'tuition' } {
+export function outstandingFor(s: RosterStudent): { amount: number; purpose: 'admission' | 'tuition'; lateFee: number } {
   if (s.status === 'pending') {
-    return { amount: s.tuitionAfterScholarship + s.mandatoryCharges, purpose: 'admission' };
+    return { amount: s.tuitionAfterScholarship + s.mandatoryCharges, purpose: 'admission', lateFee: 0 };
   }
-  return { amount: s.feeState === 'paid' ? 0 : s.amountDue, purpose: 'tuition' };
+  const amount = s.feeState === 'paid' ? 0 : s.amountDue;
+  return { amount, purpose: 'tuition', lateFee: Math.min(s.lateFeeDue, amount) };
 }
 
 /** 10th of this month, or of next month once this month is paid. */
@@ -361,16 +391,19 @@ function nextDueDate(paid: boolean): string {
 }
 
 export async function buildStudentData(db: SupabaseClient, studentId: string): Promise<StudentData | null> {
+  await ensureBilling(db);
   const { data: row, error } = await db.from('students').select('*, branches(name)').eq('id', studentId).maybeSingle();
   if (error) throw error;
   if (!row) return null;
   const student = mapStudent(row);
 
-  const [transactions, noticeList, assigned] = await Promise.all([
+  const [transactions, noticeList, assigned, docs] = await Promise.all([
     getTransactions(db, student.id),
     getNotices(db, noticeAudiencesFor('student')),
     assignedTeacherNames(db, student.classNumber, student.branchId),
+    documentUrls(db, [student.id]),
   ]);
+  const studentDocs = docs.get(student.id) ?? {};
 
   const classFees = SUBJECT_FEES[student.classNumber] ?? {};
   const subjects = student.subjects.map((name) => ({
@@ -389,6 +422,7 @@ export async function buildStudentData(db: SupabaseClient, studentId: string): P
     date: t.date,
     description: t.description,
     amount: t.amount,
+    lateFee: t.lateFee,
     method: t.method,
     status: t.status === 'verified' ? 'paid' : t.status === 'pending' ? 'pending' : 'rejected',
     utr: t.utr,
@@ -427,7 +461,9 @@ export async function buildStudentData(db: SupabaseClient, studentId: string): P
       guardianMobile: (row.parent_phone as string | null) || student.mobile,
       email: student.email,
       address: student.address ?? '',
-      photoUrl: (row.profile_photo_url as string | null) ?? null,
+      photoUrl: studentDocs.photo ?? null,
+      signatureUrl: studentDocs.signature ?? null,
+      canEditDocuments: student.status === 'pending',
       admissionDate: student.admissionDate,
       enrollmentStatus: student.status,
     },
@@ -440,6 +476,7 @@ export async function buildStudentData(db: SupabaseClient, studentId: string): P
       examFee: EXAM_FEE,
       tshirtFee: TSHIRT_FEE,
       mandatoryCharges: student.mandatoryCharges || bill.mandatoryCharges,
+      lateFee: status === 'paid' ? 0 : outstandingFor(student).lateFee,
       finalPayable: status === 'paid' ? 0 : outstandingFor(student).amount,
       status,
       nextDueDate: nextDueDate(status === 'paid'),

@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import Link from 'next/link';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -147,6 +148,7 @@ export default function Home() {
                 <div className="absolute -inset-1 bg-linear-to-r from-orange-400 to-pink-500 rounded-3xl blur opacity-30"></div>
                 <div className="relative bg-white/10 backdrop-blur-xl rounded-3xl aspect-video flex items-center justify-center border border-white/20 overflow-hidden">
                   <iframe
+                    loading="lazy"
                     className="w-full h-full"
                     src="https://www.youtube.com/embed/IufL1CDejzg?start=27&autoplay=0"
                     title="Learning Dashboard Video"
@@ -233,10 +235,12 @@ export default function Home() {
             <div className="relative">
               <div className="absolute -inset-2 bg-linear-to-r from-[#1295D8] to-orange-400 rounded-3xl opacity-20 blur-2xl"></div>
               <div className="relative rounded-3xl aspect-square overflow-hidden shadow-2xl">
-                <img 
-                  src="/gallery/gallery_1776020143_4325a91a.png" 
-                  alt="Building Global Learners" 
-                  className="w-full h-full object-cover"
+                <Image
+                  src="/gallery/gallery_1776020143_4325a91a.png"
+                  alt="Building Global Learners"
+                  fill
+                  sizes="(max-width: 1024px) 100vw, 50vw"
+                  className="object-cover"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent flex items-end justify-center pb-8">
                   <p className="text-white font-bold text-xl">Building Global Learners</p>
@@ -260,11 +264,15 @@ export default function Home() {
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
             {gallery.map((item) => (
               <div key={item.id} className="relative rounded-2xl overflow-hidden group cursor-pointer shadow-lg">
-                <img
-                  src={item.image}
-                  alt={item.caption}
-                  className="w-full aspect-square object-cover group-hover:scale-125 transition duration-500"
-                />
+                <div className="relative w-full aspect-square">
+                  <Image
+                    src={item.image}
+                    alt={item.caption}
+                    fill
+                    sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 25vw"
+                    className="object-cover group-hover:scale-125 transition duration-500"
+                  />
+                </div>
                 <div className="absolute inset-0 bg-linear-to-t from-black/80 via-black/30 to-transparent group-hover:from-black/90 transition flex items-end p-6">
                   <p className="text-white font-bold text-lg">{item.caption}</p>
                 </div>
@@ -298,9 +306,11 @@ export default function Home() {
                 <div className="absolute -inset-1 bg-linear-to-r opacity-0 group-hover:opacity-100 from-[#1295D8] to-orange-400 rounded-2xl blur transition"></div>
                 <Card className="relative bg-white text-center p-8 hover:shadow-2xl transition border-0 h-full">
                   <div className="mb-6 inline-block relative">
-                    <img
+                    <Image
                       src={teacher.image}
                       alt={teacher.name}
+                      width={128}
+                      height={128}
                       className="w-32 h-32 rounded-full object-cover border-4 border-[#CDE6F7] shadow-lg"
                     />
                     <div className="absolute -bottom-2 -right-2 bg-linear-to-r from-[#1295D8] to-orange-400 p-2 rounded-full">

@@ -35,7 +35,12 @@ export interface RosterStudent {
   tuitionAfterScholarship: number;
   mandatoryCharges: number;
   feeState: StudentFeeState;
+  /** Total owed now, including any late fee. */
   amountDue: number;
+  /** Part of amountDue that is late fee (Rs 100 per month paid after the 10th). */
+  lateFeeDue: number;
+  photoUrl?: string | null;
+  signatureUrl?: string | null;
   admissionDate: string;
   status: EnrollmentStatus;
   tshirtSize?: string;
@@ -48,7 +53,7 @@ export interface RosterStudent {
 /** What teachers get: no fees, scholarship or admission-payment details. */
 export type TeacherRosterStudent = Pick<
   RosterStudent,
-  'id' | 'branchId' | 'branchName' | 'registrationNumber' | 'fullName' | 'classNumber' | 'stream' | 'board' | 'subjects' | 'parentName' | 'mobile' | 'status' | 'admissionDate'
+  'id' | 'branchId' | 'branchName' | 'registrationNumber' | 'fullName' | 'classNumber' | 'stream' | 'board' | 'subjects' | 'parentName' | 'mobile' | 'status' | 'admissionDate' | 'photoUrl'
 >;
 
 export interface Transaction {
@@ -61,6 +66,8 @@ export interface Transaction {
   registrationNumber?: string;
   description: string;
   amount: number;
+  /** Part of amount that was late fee. */
+  lateFee: number;
   method: PaymentMethod;
   purpose: 'admission' | 'tuition' | 'other';
   utr?: string;

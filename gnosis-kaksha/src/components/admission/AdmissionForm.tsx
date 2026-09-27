@@ -27,6 +27,7 @@ import { useRouter } from 'next/navigation';
 import { upiPayUrl } from '@/lib/upi';
 import { usePaymentPayee } from '@/hooks/usePaymentPayee';
 import { useApi } from '@/hooks/useApi';
+import { ImageUpload } from '@/components/ui/ImageUpload';
 import { QRCodeSVG } from 'qrcode.react';
 import { ReceiptSheet } from '@/components/dashboard/OfficialFeeReceiptModal';
 import toast from 'react-hot-toast';
@@ -65,6 +66,8 @@ const step4Schema = z.object({
 
 const step5Schema = z.object({
   documentType: z.string().min(1, 'Document type is required'),
+  photo: z.string().min(1, 'Upload a recent passport-size photo'),
+  signature: z.string().min(1, 'Upload your signature'),
 });
 
 const step6Schema = z.object({
@@ -228,7 +231,7 @@ export function AdmissionForm() {
       } else {
         const message = resData.error || 'Failed to submit form. Please verify your details.';
         // Send the applicant back to the step that holds the offending field.
-        const stepFor: Record<string, number> = { branchId: 1, email: 1, password: 1, phone: 1, dob: 1, fullName: 1, schoolName: 2, previousPercentage: 2, currentClass: 2, subjects: 3, pincode: 4, parentPhone: 4, address: 4 };
+        const stepFor: Record<string, number> = { photo: 5, signature: 5, branchId: 1, email: 1, password: 1, phone: 1, dob: 1, fullName: 1, schoolName: 2, previousPercentage: 2, currentClass: 2, subjects: 3, pincode: 4, parentPhone: 4, address: 4 };
         const step = resData.field ? stepFor[resData.field as string] : undefined;
         if (step && step !== currentStep) {
           setFormData(finalData);
@@ -352,6 +355,8 @@ export function AdmissionForm() {
             parentName: formData.parentName,
             mobile: formData.phone,
             address: [formData.address, formData.city].filter(Boolean).join(', ') || 'Ramkrishna Nagar',
+            photoUrl: formData.photo || null,
+            signatureUrl: formData.signature || null,
           }}
           copyType="STUDENT COPY"
           credentials={{
@@ -586,8 +591,8 @@ export function AdmissionForm() {
             {currentStep === 5 && (
               <div className="space-y-6">
                 <div>
-                  <h2 className="text-2xl font-bold text-[#1A2B4A]">Document Verification</h2>
-                  <p className="text-sm text-[#718096] mt-1">Tell us which document you will show at the office</p>
+                  <h2 className="text-2xl font-bold text-[#1A2B4A]">Photo, Signature &amp; Documents</h2>
+                  <p className="text-sm text-[#718096] mt-1">Your photo, signature, and the document you will show at the office</p>
                 </div>
                 <Select
                   label="Document Type"
@@ -598,6 +603,28 @@ export function AdmissionForm() {
                   ]}
                   {...form.register('documentType')}
                   error={errors.documentType?.message}
+                />
+                <ImageUpload
+                  kind="photo"
+                  label="Student photo"
+                  hint="A recent passport-size photo, face clearly visible, plain background. It is printed on your ID card and receipt."
+                  value={form.watch('photo')}
+                  onChange={(dataUrl) => {
+                    form.setValue('photo', dataUrl, { shouldValidate: true });
+                    setFormData((d) => ({ ...d, photo: dataUrl }));
+                  }}
+                  error={errors.photo?.message}
+                />
+                <ImageUpload
+                  kind="signature"
+                  label="Student signature"
+                  hint="Sign in dark ink on white paper and take a clear photo of it (or scan it)."
+                  value={form.watch('signature')}
+                  onChange={(dataUrl) => {
+                    form.setValue('signature', dataUrl, { shouldValidate: true });
+                    setFormData((d) => ({ ...d, signature: dataUrl }));
+                  }}
+                  error={errors.signature?.message}
                 />
                 <p className="rounded-lg border border-[#CDE6F7] bg-[#F0F7FD] p-3 text-sm text-[#2E5EAA]">
                   Bring the original of this document (and a photocopy) to the institute office. It is checked there
