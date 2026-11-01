@@ -43,6 +43,11 @@ interface StaffInfo {
   dateOfJoining: string | null;
   employmentStatus: 'active' | 'resigned' | 'terminated';
   photoUrl: string | null;
+  employmentType: string | null;
+  probation: string | null;
+  workLocation: string | null;
+  weeklyClasses: string | null;
+  additionalDuties: string | null;
 }
 
 interface StaffForm {
@@ -51,16 +56,18 @@ interface StaffForm {
   fatherName: string;
   address: string;
   dateOfJoining: string;
+  employmentType: string;
+  probation: string;
+  workLocation: string;
+  weeklyClasses: string;
+  additionalDuties: string;
   photo: string;
 }
-const EMPTY_STAFF_FORM: StaffForm = { department: '', phone: '', fatherName: '', address: '', dateOfJoining: '', photo: '' };
-const staffDetails = (f: StaffForm) => ({
-  department: f.department,
-  phone: f.phone,
-  fatherName: f.fatherName,
-  address: f.address,
-  dateOfJoining: f.dateOfJoining,
-});
+const EMPTY_STAFF_FORM: StaffForm = {
+  department: '', phone: '', fatherName: '', address: '', dateOfJoining: '',
+  employmentType: '', probation: '', workLocation: '', weeklyClasses: '', additionalDuties: '', photo: '',
+};
+const staffDetails = ({ photo: _photo, ...details }: StaffForm) => details;
 
 function StaffFields({ value, onChange, idPrefix }: { value: StaffForm; onChange: (v: StaffForm) => void; idPrefix: string }) {
   const set = (k: keyof StaffForm) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => onChange({ ...value, [k]: e.target.value });
@@ -71,6 +78,13 @@ function StaffFields({ value, onChange, idPrefix }: { value: StaffForm; onChange
       <Input label="Father's Name" value={value.fatherName} onChange={set('fatherName')} />
       <Input label="Address" value={value.address} onChange={set('address')} />
       <Input label="Date of Joining" type="date" value={value.dateOfJoining} onChange={set('dateOfJoining')} />
+      <div className="grid grid-cols-2 gap-3">
+        <Input label="Employment Type" placeholder="Full Time / Part Time" value={value.employmentType} onChange={set('employmentType')} />
+        <Input label="Probation Period" placeholder="e.g. Completed" value={value.probation} onChange={set('probation')} />
+        <Input label="Work Location" placeholder="e.g. Ramkrishna Nagar Centre" value={value.workLocation} onChange={set('workLocation')} />
+        <Input label="Weekly Classes" placeholder="e.g. 12 Classes / Week" value={value.weeklyClasses} onChange={set('weeklyClasses')} />
+      </div>
+      <Input label="Additional Duties" placeholder="e.g. Doubt Support, Test Evaluation" value={value.additionalDuties} onChange={set('additionalDuties')} />
       <ImageUpload kind="photo" label="Staff photo (for the ID card)" value={value.photo || null} onChange={(d) => onChange({ ...value, photo: d })} />
     </div>
   );
@@ -202,6 +216,11 @@ export default function AdminAccountsPage() {
       fatherName: a.staff?.fatherName ?? '',
       address: a.staff?.address ?? '',
       dateOfJoining: a.staff?.dateOfJoining ?? '',
+      employmentType: a.staff?.employmentType ?? '',
+      probation: a.staff?.probation ?? '',
+      workLocation: a.staff?.workLocation ?? '',
+      weeklyClasses: a.staff?.weeklyClasses ?? '',
+      additionalDuties: a.staff?.additionalDuties ?? '',
       photo: '',
     });
   };

@@ -7,6 +7,7 @@ import { LogOut, Menu, X } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { Badge } from '@/components/dashboard/Badge';
 import { LoadingState } from '@/components/dashboard/PageState';
+import { NotificationBell } from '@/components/dashboard/NotificationBell';
 import { NAVIGATION, PORTAL, type DashboardNavGroup } from '@/components/dashboard/navigation';
 import type { UserRole } from '@/lib/permissions';
 
@@ -151,6 +152,7 @@ export function DashboardLayout({ area, children }: DashboardLayoutProps) {
               </div>
             </div>
             <div className="flex items-center gap-3">
+              <NotificationBell />
               <Badge tone="blue">{roleLabel}</Badge>
               <button
                 type="button"

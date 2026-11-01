@@ -14,6 +14,10 @@ export interface Branch {
   name: string;
   address: string | null;
   isActive: boolean;
+  /** Where staff GPS check-in is measured from (admin sets it). */
+  latitude?: number | null;
+  longitude?: number | null;
+  radiusM?: number;
 }
 
 export interface RosterStudent {

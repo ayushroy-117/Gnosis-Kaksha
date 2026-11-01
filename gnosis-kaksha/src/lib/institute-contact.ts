@@ -10,5 +10,8 @@ export const INSTITUTE_TAGLINE = 'A Place For Excellence';
 export const INSTITUTE_ADDRESS_SHORT = 'Ramkrishna Nagar, Sribhumi, Assam - 788166';
 export const INSTITUTE_ADDRESS_FULL = 'Block Road, Ramkrishna Nagar, Sribhumi, Assam - 788166';
 export const HELPLINE_DISPLAY = '8474020124';
+/** Approver on salary receipts (from the institute's sample receipt). */
+export const DIRECTOR_NAME = 'Ankur Kumar Nath';
+export const DIRECTOR_TITLE = 'Founder & CEO';
 export const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || 'https://gnosiskaksha.in').replace(/\/$/, '');
 export const SITE_HOST = SITE_URL.replace(/^https?:\/\//, '');

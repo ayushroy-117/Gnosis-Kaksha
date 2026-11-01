@@ -52,7 +52,9 @@ test('teacher sees Personal / Professional / ID Card layout with their details',
   await page.goto('/teacher/profile');
 
   await expect(page.getByTestId('teacher-photo').locator('img')).toBeVisible();
-  await expect(page.getByRole('tab')).toHaveText(['Personal Information', 'Professional Information', 'ID Card', 'Salary Information']);
+  await expect(page.getByRole('tab')).toHaveText(['Personal Information', 'Professional Information', 'ID Card', 'Salary Information', 'Accounts & Security']);
+  staffCode = (await page.getByTestId('staff-code').innerText()).trim();
+  expect(staffCode).toMatch(/^GK-FAC-[0-9A-F]{6}$/);
 
   const personal = page.getByTestId('personal-info');
   await expect(personal).toContainText(teacher.father);
@@ -63,10 +65,9 @@ test('teacher sees Personal / Professional / ID Card layout with their details',
   const prof = page.getByTestId('professional-info');
   await expect(prof).toContainText('English Department');
   await expect(prof).toContainText('15 Jun 2024');
-  staffCode = (await prof.getByText(/^GK-FAC-[0-9A-F]{6}$/).first().innerText()).trim();
 
   await page.getByRole('tab', { name: 'Salary Information' }).click();
-  await expect(page.getByTestId('salary-placeholder')).toBeVisible();
+  await expect(page.getByText('Salary History')).toBeVisible();
 });
 
 test('faculty ID card: front and back follow the client layout', async ({ page }) => {

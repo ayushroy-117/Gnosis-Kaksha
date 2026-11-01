@@ -7,6 +7,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import type { MaterialCategory, StudyMaterial } from '@/lib/study-materials';
 import { teacherScopeFor } from '@/lib/server/institute';
 import { canTeach } from '@/lib/institute-data';
+import { logActivity } from '@/lib/server/portal';
 
 export const dynamic = 'force-dynamic';
 
@@ -142,6 +143,7 @@ export async function POST(req: NextRequest) {
       .select(COLUMNS)
       .single();
     if (error) throw error;
+    await logActivity(db, auth.user, 'Study material uploaded', `${m.title} · ${m.subject} · Class ${m.classNumber}`);
     return NextResponse.json({ success: true, message: 'Study material published.', material: mapMaterial(data) }, { status: 201 });
   } catch (err) {
     return serverError('study-material POST', err, 'Could not save the file.');

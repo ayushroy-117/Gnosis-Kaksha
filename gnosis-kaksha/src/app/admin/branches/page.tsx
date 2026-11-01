@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Building2, Plus, Pencil, Check, X } from 'lucide-react';
+import { Building2, Plus, Pencil, Check, X, MapPin, LocateFixed } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { SectionCard } from '@/components/dashboard/SectionCard';
 import { Badge } from '@/components/dashboard/Badge';
@@ -23,6 +23,16 @@ export default function AdminBranchesPage() {
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<{ id: string; name: string; address: string } | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [locating, setLocating] = useState<{ id: string; lat: string; lng: string; radius: string } | null>(null);
+
+  const useHere = () => {
+    if (!navigator.geolocation) return toast.error('This device cannot share its location.');
+    navigator.geolocation.getCurrentPosition(
+      (pos) => setLocating((l) => l && { ...l, lat: pos.coords.latitude.toFixed(6), lng: pos.coords.longitude.toFixed(6) }),
+      () => toast.error('Could not get your location. Allow location access and try again.'),
+      { enableHighAccuracy: true, timeout: 20_000 }
+    );
+  };
 
   const branches = data?.branches ?? [];
 
@@ -48,8 +58,10 @@ export default function AdminBranchesPage() {
       toast.success(success);
       setEditing(null);
       reload();
+      return true;
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Could not update the branch.');
+      return false;
     } finally {
       setBusyId(null);
     }
@@ -159,6 +171,15 @@ export default function AdminBranchesPage() {
                         <div className="flex w-full gap-3 sm:w-auto">
                           <button
                             type="button"
+                            onClick={() => setLocating({ id: b.id, lat: b.latitude?.toString() ?? '', lng: b.longitude?.toString() ?? '', radius: String(b.radiusM ?? 200) })}
+                            disabled={busy}
+                            className="inline-flex items-center gap-1 text-xs font-semibold text-[#1295D8] hover:underline disabled:opacity-50"
+                            title="Location used for staff GPS attendance"
+                          >
+                            <MapPin size={13} /> {b.latitude != null ? 'Location set' : 'Set location'}
+                          </button>
+                          <button
+                            type="button"
                             onClick={() => setEditing({ id: b.id, name: b.name, address: b.address ?? '' })}
                             disabled={busy}
                             className="inline-flex items-center gap-1 text-xs font-semibold text-[#1295D8] hover:underline disabled:opacity-50"
@@ -178,6 +199,29 @@ export default function AdminBranchesPage() {
                           </button>
                         </div>
                       </div>
+                    )}
+                    {locating?.id === b.id && (
+                      <form
+                        className="mt-3 space-y-2 rounded-lg border border-blue-100 bg-blue-50/50 p-3"
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          const lat = Number(locating.lat), lng = Number(locating.lng), radius = Number(locating.radius);
+                          if (!locating.lat || !locating.lng || Number.isNaN(lat) || Number.isNaN(lng)) return toast.error('Enter the latitude and longitude, or use your current location.');
+                          update(b.id, { latitude: lat, longitude: lng, radiusM: radius }, `Location of "${b.name}" saved.`).then((ok) => ok && setLocating(null));
+                        }}
+                      >
+                        <p className="text-xs text-[#4A5568]">Teachers can mark their own attendance only within this distance of the branch. Stand at the branch and use your current location, or paste the coordinates from Google Maps.</p>
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                          <Input label="Latitude" value={locating.lat} onChange={(e) => setLocating({ ...locating, lat: e.target.value })} placeholder="24.8692" />
+                          <Input label="Longitude" value={locating.lng} onChange={(e) => setLocating({ ...locating, lng: e.target.value })} placeholder="92.3554" />
+                          <Input label="Allowed radius (m)" type="number" min={20} max={5000} value={locating.radius} onChange={(e) => setLocating({ ...locating, radius: e.target.value })} />
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <Button type="button" variant="outline" size="sm" onClick={useHere} className="inline-flex items-center gap-1"><LocateFixed size={14} /> Use my current location</Button>
+                          <Button type="submit" size="sm" isLoading={busy}>Save location</Button>
+                          <Button type="button" variant="ghost" size="sm" onClick={() => setLocating(null)}>Cancel</Button>
+                        </div>
+                      </form>
                     )}
                   </li>
                 );

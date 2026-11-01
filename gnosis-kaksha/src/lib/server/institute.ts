@@ -177,6 +177,7 @@ export async function getNotices(db: SupabaseClient, audiences: InstituteNotice[
       .from('notices')
       .select('*')
       .eq('is_active', true)
+      .eq('source', 'admin')
       .in('audience', audiences)
       .order('is_pinned', { ascending: false })
       .order('published_at', { ascending: false })
@@ -291,14 +292,17 @@ export async function buildAccountantData(db: SupabaseClient, user: SessionUser)
 // ---------------------------------------------------------------------------
 
 export async function getBranches(db: SupabaseClient, { activeOnly = false } = {}): Promise<Branch[]> {
-  let q = db.from('branches').select('id, name, address, is_active').order('name');
+  let q = db.from('branches').select('id, name, address, is_active, latitude, longitude, radius_m').order('name');
   if (activeOnly) q = q.eq('is_active', true);
   const rows = await must(q);
-  return (rows as Array<{ id: string; name: string; address: string | null; is_active: boolean }>).map((b) => ({
+  return (rows as Array<{ id: string; name: string; address: string | null; is_active: boolean; latitude: number | null; longitude: number | null; radius_m: number }>).map((b) => ({
     id: b.id,
     name: b.name,
     address: b.address,
     isActive: b.is_active,
+    latitude: b.latitude,
+    longitude: b.longitude,
+    radiusM: b.radius_m,
   }));
 }
 
@@ -397,9 +401,15 @@ export async function buildStudentData(db: SupabaseClient, studentId: string): P
   if (!row) return null;
   const student = mapStudent(row);
 
-  const [transactions, noticeList, assigned, docs] = await Promise.all([
+  const [transactions, noticeList, classNotices, assigned, docs] = await Promise.all([
     getTransactions(db, student.id),
     getNotices(db, noticeAudiencesFor('student')),
+    // Teacher notices go only to students of that class at that branch.
+    must(
+      db.from('notices').select('*').eq('is_active', true).eq('source', 'teacher')
+        .eq('class_number', student.classNumber).eq('branch_id', student.branchId)
+        .order('published_at', { ascending: false }).limit(50)
+    ),
     assignedTeacherNames(db, student.classNumber, student.branchId),
     documentUrls(db, [student.id]),
   ]);
@@ -436,7 +446,7 @@ export async function buildStudentData(db: SupabaseClient, studentId: string): P
       ? 'paid'
       : 'due';
 
-  const notices: StudentNotice[] = noticeList.map((n) => ({
+  const toStudentNotice = (n: InstituteNotice, issuedBy: string | null = null): StudentNotice => ({
     id: n.id,
     title: n.title,
     content: n.content,
@@ -445,7 +455,12 @@ export async function buildStudentData(db: SupabaseClient, studentId: string): P
     attachmentUrl: n.attachmentUrl,
     attachmentName: n.attachmentName,
     attachmentSize: n.attachmentSize,
-  }));
+    issuedBy,
+  });
+  const notices: StudentNotice[] = [
+    ...noticeList.map((n) => toStudentNotice(n)),
+    ...(classNotices as Array<{ issued_by_name: string | null }>).map((r) => toStudentNotice(mapNotice(r), r.issued_by_name ?? 'Teacher')),
+  ].sort((a, b) => b.date.localeCompare(a.date));
 
   return {
     profile: {
