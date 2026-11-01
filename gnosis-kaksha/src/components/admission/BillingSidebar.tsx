@@ -16,13 +16,13 @@ export function BillingSidebar({
   previousPercentage,
 }: BillingSidebarProps) {
   const billing = useMemo(() => {
-    if (!currentClass || !selectedSubjects || !previousPercentage) {
+    if (!currentClass || !selectedSubjects?.length) {
       return null;
     }
 
     const classNum = parseInt(currentClass);
     const subjectFees = SUBJECT_FEES[classNum] || {};
-    const percentage = parseInt(previousPercentage);
+    const percentage = parseFloat(previousPercentage || '0') || 0;
     const scholarship = calculateScholarship(percentage);
 
     const selectedSubjectsData = selectedSubjects.map((subject) => ({

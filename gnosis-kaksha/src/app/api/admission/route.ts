@@ -6,6 +6,7 @@ import { serverError } from '@/lib/authz';
 import { calculateBill, calculateScholarship, SUBJECT_FEES } from '@/lib/fees';
 import { normalizeUtr, UTR_PATTERN } from '@/lib/upi';
 import { clientIp, rateLimit } from '@/lib/rate-limit';
+import { otpRequired, verifyProof } from '@/lib/server/otp';
 import { parseImageDataUrl, saveStudentDocument } from '@/lib/server/student-documents';
 
 const phone = z.string().trim().regex(/^(\+91[\s-]?)?[6-9]\d{9}$/, 'Enter a valid 10-digit mobile number');
@@ -22,7 +23,11 @@ const admissionSchema = z
     currentClass: z.coerce.number().int().min(5).max(12),
     board: z.enum(['SEBA', 'CBSE', 'ICSE']).default('SEBA'),
     schoolName: z.string().trim().min(2, 'School name is required').max(200),
-    previousPercentage: z.coerce.number().min(0, 'Percentage must be 0–100').max(100, 'Percentage must be 0–100'),
+    // Optional: blank means no scholarship, not an error.
+    previousPercentage: z.preprocess(
+      (v) => (v === '' || v == null ? 0 : v),
+      z.coerce.number().min(0, 'Percentage must be 0–100').max(100, 'Percentage must be 0–100')
+    ),
     subjects: z.array(z.string()).min(1, 'Select at least one subject'),
     address: z.string().trim().min(5, 'Address is required').max(300),
     city: z.string().trim().min(2).max(100),
@@ -57,6 +62,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: issue?.message ?? 'Please check the form.', field: issue?.path?.[0] }, { status: 400 });
   }
   const d = parsed.data;
+  if (otpRequired() && !verifyProof(d.phone, raw?.otpProof)) {
+    return NextResponse.json({ error: 'Verify your mobile number with the OTP first.', field: 'phone' }, { status: 400 });
+  }
   const photo = parseImageDataUrl('photo', raw?.photo);
   if ('error' in photo) return NextResponse.json({ error: photo.error, field: 'photo' }, { status: 400 });
   const signature = parseImageDataUrl('signature', raw?.signature);

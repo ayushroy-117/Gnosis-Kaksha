@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { UserPlus, Shield, Calculator, BookOpen, GraduationCap, KeyRound, ChevronDown, Users, Library } from 'lucide-react';
+import { UserPlus, IdCard, Shield, Calculator, BookOpen, GraduationCap, KeyRound, ChevronDown, Users, Library } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { SectionCard } from '@/components/dashboard/SectionCard';
 import { Badge } from '@/components/dashboard/Badge';
@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Modal } from '@/components/ui/Modal';
+import { ImageUpload } from '@/components/ui/ImageUpload';
 import { apiFetch, useApi } from '@/hooks/useApi';
 import { formatDate } from '@/lib/format';
 import { SUBJECT_FEES } from '@/lib/fees';
@@ -30,6 +31,49 @@ interface Account {
   assignments: TeachingAssignment[] | null;
   branchId: string | null;
   branchName: string | null;
+  staff: StaffInfo | null;
+}
+
+interface StaffInfo {
+  staffCode: string;
+  department: string | null;
+  phone: string | null;
+  fatherName: string | null;
+  address: string | null;
+  dateOfJoining: string | null;
+  employmentStatus: 'active' | 'resigned' | 'terminated';
+  photoUrl: string | null;
+}
+
+interface StaffForm {
+  department: string;
+  phone: string;
+  fatherName: string;
+  address: string;
+  dateOfJoining: string;
+  photo: string;
+}
+const EMPTY_STAFF_FORM: StaffForm = { department: '', phone: '', fatherName: '', address: '', dateOfJoining: '', photo: '' };
+const staffDetails = (f: StaffForm) => ({
+  department: f.department,
+  phone: f.phone,
+  fatherName: f.fatherName,
+  address: f.address,
+  dateOfJoining: f.dateOfJoining,
+});
+
+function StaffFields({ value, onChange, idPrefix }: { value: StaffForm; onChange: (v: StaffForm) => void; idPrefix: string }) {
+  const set = (k: keyof StaffForm) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => onChange({ ...value, [k]: e.target.value });
+  return (
+    <div className="space-y-4" data-testid={`${idPrefix}-staff-fields`}>
+      <Input label="Department / Subject" placeholder="e.g. English" value={value.department} onChange={set('department')} />
+      <Input label="Contact Number" placeholder="10-digit mobile" value={value.phone} onChange={set('phone')} />
+      <Input label="Father's Name" value={value.fatherName} onChange={set('fatherName')} />
+      <Input label="Address" value={value.address} onChange={set('address')} />
+      <Input label="Date of Joining" type="date" value={value.dateOfJoining} onChange={set('dateOfJoining')} />
+      <ImageUpload kind="photo" label="Staff photo (for the ID card)" value={value.photo || null} onChange={(d) => onChange({ ...value, photo: d })} />
+    </div>
+  );
 }
 
 const CLASS_NUMBERS = Object.keys(SUBJECT_FEES).map(Number).sort((a, b) => a - b);
@@ -65,6 +109,11 @@ export default function AdminAccountsPage() {
   const { data: branchData } = useApi<{ branches: { id: string; name: string }[] }>('/api/branches');
   const branches = branchData?.branches ?? [];
   const [form, setForm] = useState({ fullName: '', email: '', role: 'teacher' as 'teacher' | 'accountant', password: '', branchId: '' });
+  const [staffForm, setStaffForm] = useState<StaffForm>(EMPTY_STAFF_FORM);
+  const [detailsTarget, setDetailsTarget] = useState<Account | null>(null);
+  const [detailsForm, setDetailsForm] = useState<StaffForm>(EMPTY_STAFF_FORM);
+  const [detailsStatus, setDetailsStatus] = useState<'active' | 'resigned' | 'terminated'>('active');
+  const [savingDetails, setSavingDetails] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -114,9 +163,13 @@ export default function AdminAccountsPage() {
     e.preventDefault();
     setIsCreating(true);
     try {
-      await apiFetch('/api/admin/accounts', { method: 'POST', json: { ...form, branchId: form.branchId || null } });
+      await apiFetch('/api/admin/accounts', {
+        method: 'POST',
+        json: { ...form, branchId: form.branchId || null, details: staffDetails(staffForm), photo: staffForm.photo || undefined },
+      });
       toast.success(`${capitalize(form.role)} account created for ${form.fullName}.`);
       setForm({ fullName: '', email: '', role: 'teacher', password: '', branchId: '' });
+      setStaffForm(EMPTY_STAFF_FORM);
       reload();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Could not create account.');
@@ -137,6 +190,43 @@ export default function AdminAccountsPage() {
       return false;
     } finally {
       setBusyId(null);
+    }
+  };
+
+  const openDetails = (a: Account) => {
+    setDetailsTarget(a);
+    setDetailsStatus(a.staff?.employmentStatus ?? 'active');
+    setDetailsForm({
+      department: a.staff?.department ?? '',
+      phone: a.staff?.phone ?? '',
+      fatherName: a.staff?.fatherName ?? '',
+      address: a.staff?.address ?? '',
+      dateOfJoining: a.staff?.dateOfJoining ?? '',
+      photo: '',
+    });
+  };
+
+  const saveDetails = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!detailsTarget) return;
+    setSavingDetails(true);
+    try {
+      await apiFetch('/api/admin/accounts', {
+        method: 'PATCH',
+        json: {
+          id: detailsTarget.id,
+          details: staffDetails(detailsForm),
+          photo: detailsForm.photo || undefined,
+          employmentStatus: detailsStatus !== (detailsTarget.staff?.employmentStatus ?? 'active') ? detailsStatus : undefined,
+        },
+      });
+      toast.success(`Details saved for ${detailsTarget.fullName || detailsTarget.email}.`);
+      setDetailsTarget(null);
+      reload();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not save details.');
+    } finally {
+      setSavingDetails(false);
     }
   };
 
@@ -198,6 +288,7 @@ export default function AdminAccountsPage() {
                 onChange={(e) => setForm((f) => ({ ...f, branchId: e.target.value }))}
                 required={form.role === 'teacher'}
               />
+              <StaffFields value={staffForm} onChange={setStaffForm} idPrefix="create" />
               <Input
                 label="Temporary Password"
                 type="password"
@@ -254,7 +345,7 @@ export default function AdminAccountsPage() {
                         <div className="min-w-0 flex-1">
                           <p className="truncate font-semibold text-[#1A2B4A]">
                             {a.fullName || a.email}
-                            {!a.isActive && <span className="ml-2 text-xs font-medium text-red-600">Deactivated</span>}
+                            {!a.isActive && <span className="ml-2 text-xs font-medium text-red-600">{a.staff && a.staff.employmentStatus !== 'active' ? (a.staff.employmentStatus === 'resigned' ? 'Resigned' : 'Terminated') : 'Deactivated'}</span>}
                           </p>
                           <p className="truncate text-xs text-[#718096]">
                             {a.email}
@@ -321,6 +412,18 @@ export default function AdminAccountsPage() {
                         </button>
                         {!isAdmin && (
                           <>
+                            {a.staff && (
+                              <>
+                                <span className="text-gray-300">|</span>
+                                <button
+                                  type="button"
+                                  onClick={() => openDetails(a)}
+                                  className="inline-flex items-center gap-1 text-xs font-semibold text-[#1295D8] hover:underline"
+                                >
+                                  <IdCard size={13} /> Staff details &amp; ID
+                                </button>
+                              </>
+                            )}
                             <span className="text-gray-300">|</span>
                             <button
                               type="button"
@@ -429,6 +532,34 @@ export default function AdminAccountsPage() {
             <Button type="button" variant="primary" isLoading={savingSubjects} onClick={saveSubjects}>Save subjects</Button>
           </div>
         </div>
+      </Modal>
+
+      <Modal
+        isOpen={!!detailsTarget}
+        onClose={() => setDetailsTarget(null)}
+        title={`Staff details: ${detailsTarget?.fullName || detailsTarget?.email || ''}`}
+        size="lg"
+      >
+        <form onSubmit={saveDetails} className="space-y-4">
+          <p className="text-sm text-[#4A5568]">
+            Printed on the faculty ID card. Staff ID: <strong className="font-mono">{detailsTarget?.staff?.staffCode}</strong>
+          </p>
+          <StaffFields value={detailsForm} onChange={setDetailsForm} idPrefix="edit" />
+          <Select
+            label="Employment status"
+            options={[
+              { value: 'active', label: 'Active' },
+              { value: 'resigned', label: 'Resigned (card shows NOT VALID, sign-in blocked)' },
+              { value: 'terminated', label: 'Terminated (card shows NOT VALID, sign-in blocked)' },
+            ]}
+            value={detailsStatus}
+            onChange={(e) => setDetailsStatus(e.target.value as typeof detailsStatus)}
+          />
+          <div className="flex gap-3">
+            <Button type="button" variant="outline" className="flex-1" onClick={() => setDetailsTarget(null)}>Cancel</Button>
+            <Button type="submit" variant="primary" className="flex-1" isLoading={savingDetails}>Save details</Button>
+          </div>
+        </form>
       </Modal>
 
       <Modal

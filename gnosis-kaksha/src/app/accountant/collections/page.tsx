@@ -583,6 +583,7 @@ export default function AccountantCollectionsPage() {
             address: receiptStudent?.address,
             photoUrl: receiptStudent?.photoUrl,
             signatureUrl: receiptStudent?.signatureUrl,
+            branchName: receiptStudent?.branchName,
           }}
           onClose={() => setApprovedReceipt(null)}
           copyType="OFFICE COPY"

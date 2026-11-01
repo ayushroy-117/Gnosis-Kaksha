@@ -84,6 +84,7 @@ export const AREA_ROLES: Record<string, UserRole[]> = {
   '/accountant': ['accountant', 'admin'],
   '/teacher': ['teacher', 'admin'],
   '/student': ['student', 'admin'],
+  '/scan': ['teacher', 'accountant', 'admin'],
 };
 
 export function homeFor(role: UserRole): string {

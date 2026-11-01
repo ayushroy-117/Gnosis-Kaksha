@@ -1,6 +1,6 @@
 import {
   LayoutDashboard, Users, UserPlus, Megaphone, ShieldCheck, Wallet, Receipt, BarChart3,
-  ClipboardCheck, SlidersHorizontal, BookOpen, FileText, CalendarCheck, UserCheck, User, Bell, QrCode, Building2,
+  ClipboardCheck, ScanLine, SlidersHorizontal, BookOpen, FileText, CalendarCheck, UserCheck, User, Bell, QrCode, Building2,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { UserRole } from '@/lib/permissions';
@@ -55,6 +55,7 @@ export const NAVIGATION: Record<UserRole, DashboardNavGroup[]> = {
         { label: 'Allocations', href: '/accountant/allocations', icon: ClipboardCheck },
         { label: 'Attendance', href: '/teacher/attendance', icon: CalendarCheck },
         { label: 'Study Material', href: '/teacher/study-material', icon: FileText },
+        { label: 'Scan ID', href: '/scan', icon: ScanLine },
       ],
     },
   ],
@@ -67,6 +68,7 @@ export const NAVIGATION: Record<UserRole, DashboardNavGroup[]> = {
         { label: 'Reports', href: '/accountant/reports', icon: BarChart3 },
         { label: 'Allocations', href: '/accountant/allocations', icon: ClipboardCheck },
         { label: 'Fee Structure', href: '/accountant/fee-structure', icon: SlidersHorizontal },
+        { label: 'Scan ID', href: '/scan', icon: ScanLine },
       ],
     },
   ],
@@ -78,6 +80,7 @@ export const NAVIGATION: Record<UserRole, DashboardNavGroup[]> = {
         { label: 'Students', href: '/teacher/students', icon: Users },
         { label: 'Allocations', href: '/teacher/allocations', icon: BookOpen },
         { label: 'Study Material', href: '/teacher/study-material', icon: FileText },
+        { label: 'Scan ID', href: '/scan', icon: ScanLine },
         { label: 'Teacher Profile', href: '/teacher/profile', icon: UserCheck },
       ],
     },

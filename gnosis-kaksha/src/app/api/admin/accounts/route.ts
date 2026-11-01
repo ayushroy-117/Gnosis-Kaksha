@@ -2,6 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { requirePermission, serverError } from '@/lib/authz';
+import { parseImageDataUrl } from '@/lib/server/student-documents';
+import {
+  loadAllStaff,
+  saveStaffDetails,
+  saveStaffPhoto,
+  setEmploymentStatus,
+  staffDetailsSchema,
+} from '@/lib/server/staff';
 import { ASSIGNABLE_ROLES, getPermissions, type UserRole } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
@@ -29,6 +37,7 @@ export async function GET() {
     for (const r of assignmentRows ?? []) {
       assignmentsBy.set(r.teacher_id, [...(assignmentsBy.get(r.teacher_id) ?? []), { subject: r.subject, classNumber: r.class_number }]);
     }
+    const staffBy = await loadAllStaff(db);
     const lastSignIn = new Map((authUsers?.users ?? []).map((u) => [u.id, u.last_sign_in_at ?? null]));
 
     const accounts = (data ?? []).map((p) => ({
@@ -47,6 +56,7 @@ export async function GET() {
         null,
       permissions: getPermissions(p.role as UserRole),
       assignments: p.role === 'teacher' ? assignmentsBy.get(p.id) ?? [] : null,
+      staff: p.role === 'student' ? null : staffBy.get(p.id) ?? null,
     }));
     return NextResponse.json({ accounts });
   } catch (err) {
@@ -60,6 +70,7 @@ const createSchema = z.object({
   role: z.enum(['teacher', 'accountant']),
   password: z.string().min(8, 'Temporary password must be at least 8 characters').max(128),
   branchId: z.string().uuid().nullable().optional(),
+  details: staffDetailsSchema.optional(),
 });
 
 // POST /api/admin/accounts — create a teacher or accountant account.
@@ -74,6 +85,9 @@ export async function POST(request: NextRequest) {
   }
   const { fullName, email, role, password } = parsed.data;
   const branchId = parsed.data.branchId || null;
+  const rawBody = (await request.clone().json().catch(() => null)) as { photo?: unknown } | null;
+  const photo = rawBody?.photo ? parseImageDataUrl('photo', rawBody.photo) : null;
+  if (photo && 'error' in photo) return NextResponse.json({ error: photo.error }, { status: 400 });
   if (role === 'teacher' && !branchId) {
     return NextResponse.json({ error: 'Choose the branch this teacher works at.' }, { status: 400 });
   }
@@ -108,6 +122,14 @@ export async function POST(request: NextRequest) {
       throw roleErr;
     }
 
+    try {
+      await saveStaffDetails(db, created.user.id, role, parsed.data.details ?? {});
+      if (photo && !('error' in photo)) await saveStaffPhoto(db, created.user.id, photo);
+    } catch (err) {
+      await db.auth.admin.deleteUser(created.user.id);
+      throw err;
+    }
+
     return NextResponse.json({ success: true, id: created.user.id }, { status: 201 });
   } catch (err) {
     return serverError('admin/accounts POST', err, 'Could not create account.');
@@ -120,6 +142,8 @@ const updateSchema = z.object({
   isActive: z.boolean().optional(),
   password: z.string().min(8, 'New password must be at least 8 characters').max(128).optional(),
   branchId: z.string().uuid().nullable().optional(),
+  details: staffDetailsSchema.optional(),
+  employmentStatus: z.enum(['active', 'resigned', 'terminated']).optional(),
 });
 
 // PATCH /api/admin/accounts — change role, (de)activate, or reset password.
@@ -131,8 +155,11 @@ export async function PATCH(request: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 });
   }
-  const { id, role, isActive, password, branchId } = parsed.data;
-  if (role === undefined && isActive === undefined && password === undefined && branchId === undefined) {
+  const { id, role, isActive, password, branchId, details, employmentStatus } = parsed.data;
+  const rawBody = (await request.clone().json().catch(() => null)) as { photo?: unknown } | null;
+  const photo = rawBody?.photo ? parseImageDataUrl('photo', rawBody.photo) : null;
+  if (photo && 'error' in photo) return NextResponse.json({ error: photo.error }, { status: 400 });
+  if (role === undefined && isActive === undefined && password === undefined && branchId === undefined && !details && !photo && employmentStatus === undefined) {
     return NextResponse.json({ error: 'Nothing to update.' }, { status: 400 });
   }
 
@@ -141,7 +168,7 @@ export async function PATCH(request: NextRequest) {
     const { data: target } = await db.from('profiles').select('id, role, student_id, branch_id').eq('id', id).maybeSingle();
     if (!target) return NextResponse.json({ error: 'Account not found.' }, { status: 404 });
 
-    if (target.role === 'admin' && (role !== undefined || isActive === false)) {
+    if (target.role === 'admin' && (role !== undefined || isActive === false || (employmentStatus && employmentStatus !== 'active'))) {
       return NextResponse.json({ error: 'The master admin account cannot be demoted or deactivated.' }, { status: 400 });
     }
     if (role && role !== 'student' && target.student_id) {
@@ -161,6 +188,10 @@ export async function PATCH(request: NextRequest) {
       if (!b?.is_active) return NextResponse.json({ error: 'Choose an active branch.' }, { status: 400 });
     }
 
+    if (target.student_id && (details || photo || employmentStatus)) {
+      return NextResponse.json({ error: 'Staff details apply to teachers and accountants only.' }, { status: 400 });
+    }
+
     if (password) {
       const { error } = await db.auth.admin.updateUserById(id, { password });
       if (error) return NextResponse.json({ error: error.message }, { status: 400 });
@@ -173,10 +204,22 @@ export async function PATCH(request: NextRequest) {
     const { error } = await db.from('profiles').update(patch).eq('id', id);
     if (error) throw error;
 
+    if (details) await saveStaffDetails(db, id, finalRole as UserRole, details);
+    if (photo && !('error' in photo)) await saveStaffPhoto(db, id, photo);
+
+    // Resigned / terminated staff can no longer sign in; their ID-card QR shows the status.
+    let effectiveActive = isActive;
+    if (employmentStatus) {
+      await setEmploymentStatus(db, id, finalRole as UserRole, employmentStatus);
+      effectiveActive = employmentStatus === 'active';
+      const { error: actErr } = await db.from('profiles').update({ is_active: effectiveActive }).eq('id', id);
+      if (actErr) throw actErr;
+    }
+
     // Deactivation also ends their current sessions.
-    if (isActive === false) {
+    if (effectiveActive === false) {
       await db.auth.admin.updateUserById(id, { ban_duration: '876000h' });
-    } else if (isActive === true) {
+    } else if (effectiveActive === true) {
       await db.auth.admin.updateUserById(id, { ban_duration: 'none' });
     }
 

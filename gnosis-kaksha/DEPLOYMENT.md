@@ -200,17 +200,28 @@ Certbot will automatically configure HTTPS and auto-renewal.
 
 ## Step 6: Maintenance & Continuous Updates
 
-Whenever you make updates on local and push to GitHub, update your VPS with these 2 commands:
+Pushing to `main` deploys automatically: `.github/workflows/deploy.yml` SSHes into the VPS
+and runs [`deploy/scripts/deploy.sh`](deploy/scripts/deploy.sh) (pull, build, restart,
+health check). Rerun it from the repo's **Actions** tab ("Run workflow").
 
-```bash
-cd /var/www/gnosis-kaksha  # or your clone directory
+Database changes are **not** deployed automatically: paste any new `supabase/migrations/*.sql`
+into the Supabase dashboard's SQL editor and run it *before* pushing code that needs it.
 
-# 1. Pull latest changes
-git pull origin main
+Repo secrets it needs (Settings → Secrets and variables → Actions):
 
-# 2. Rebuild and restart container with zero downtime
-docker compose up -d --build
-```
+| Secret | Value |
+|---|---|
+| `VPS_HOST` | VPS IP or hostname |
+| `VPS_USER` | SSH user that can run `docker` and owns the checkout |
+| `VPS_SSH_KEY` | private key of a keypair whose public half is in that user's `~/.ssh/authorized_keys` |
+| `VPS_APP_DIR` | app directory on the VPS, e.g. `/opt/gnosis/gnosis-kaksha` |
+| `VPS_PORT` | optional, defaults to 22 |
+| `VPS_HOST_FINGERPRINT` | optional but recommended: `ssh-keygen -E sha256 -lf /etc/ssh/ssh_host_ed25519_key.pub \| cut -d' ' -f2` |
+
+The checkout must be able to `git pull` without a password (a read-only deploy key if the
+repo is private).
+
+To deploy by hand instead, from the app directory: `bash deploy/scripts/deploy.sh`.
 
 ---
 

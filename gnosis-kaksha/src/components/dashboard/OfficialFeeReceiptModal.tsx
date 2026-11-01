@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { OFFICE_PHONE_DISPLAY } from '@/lib/institute-contact';
+import { HELPLINE_DISPLAY, INSTITUTE_ADDRESS_FULL, SITE_HOST, SITE_URL } from '@/lib/institute-contact';
 import Image from 'next/image';
 import { Printer, X, MessageSquare, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
@@ -45,7 +45,11 @@ export interface FeeReceiptStudent {
   /** Student photo / signature image URLs (or data: URLs on the admission page). */
   photoUrl?: string | null;
   signatureUrl?: string | null;
+  branchName?: string | null;
 }
+
+/** Accountant's signature, printed on fee receipts only. Drop the client's file at public/signatures/accountant.png. */
+export const ACCOUNTANT_SIGNATURE_SRC = '/signatures/accountant.png';
 
 export interface ReceiptSheetProps {
   receipt: FeeReceiptData;
@@ -187,16 +191,14 @@ export function ReceiptSheet({
         <div className="border-b-2 border-black pb-3">
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
-              <div className="relative h-14 w-14 shrink-0 rounded-lg bg-white p-1 border border-gray-300 flex items-center justify-center">
-                <Image
-                  src="/logo.png"
-                  alt="Gnosis Kaksha"
-                  width={50}
-                  height={50}
-                  className="object-contain"
-                  priority
-                />
-              </div>
+              <Image
+                src="/logo.png"
+                alt="Gnosis Kaksha"
+                width={80}
+                height={80}
+                className="h-20 w-20 shrink-0 object-contain"
+                priority
+              />
               <div>
                 <h1 className="text-2xl font-black tracking-tight text-[#1A2B4A] font-sans leading-none">
                   GNOSIS KAKSHA
@@ -205,10 +207,10 @@ export function ReceiptSheet({
                   “A PLACE FOR EXCELLENCE”
                 </p>
                 <p className="text-[9px] text-gray-700 mt-0.5 leading-tight font-sans">
-                  Main Road, Ramkrishna Nagar, Cachar, Assam – 788713 &nbsp;|&nbsp; Ph: {OFFICE_PHONE_DISPLAY}
+                  {INSTITUTE_ADDRESS_FULL} &nbsp;|&nbsp; PH: {HELPLINE_DISPLAY}
                 </p>
                 <p className="text-[9px] text-gray-600 leading-tight font-sans">
-                  Email: query@gnosiskaksha.in &nbsp;|&nbsp; Web: www.gnosiskaksha.in
+                  Email: query@gnosiskaksha.in &nbsp;|&nbsp; Web: {SITE_HOST}
                 </p>
               </div>
             </div>
@@ -218,6 +220,11 @@ export function ReceiptSheet({
                 {copyType}
               </span>
               <p className="text-[9px] font-bold text-gray-600 mt-1 font-sans">ACADEMIC SESSION: 2026–2027</p>
+              {student.branchName && (
+                <p className="text-[9px] font-bold text-[#1A2B4A] mt-0.5 font-sans" data-testid="receipt-branch">
+                  BRANCH: {student.branchName}
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -360,7 +367,7 @@ export function ReceiptSheet({
           <div className="border border-blue-200 bg-blue-50/60 p-2 text-[9.5px] font-sans flex items-center justify-between gap-4">
             <div>
               <span className="font-bold text-[#1A2B4A] uppercase text-[9px]">Student Portal Access: </span>
-              <span className="text-gray-700">www.gnosiskaksha.in/login</span>
+              <span className="text-gray-700">{SITE_HOST}/auth</span>
             </div>
             <div className="flex items-center gap-4">
               <span>Login ID: <strong className="font-mono text-[#1A2B4A]">{credentials.username}</strong></span>
@@ -377,7 +384,7 @@ export function ReceiptSheet({
           <div className="flex items-center gap-2.5">
             <div className="border border-gray-300 p-1 bg-white shrink-0">
               <QRCodeSVG
-                value={`https://gnosiskaksha.in/verify/receipt/${number}`}
+                value={`${SITE_URL}/verify/receipt/${number}`}
                 size={48}
                 level="M"
                 fgColor="#1A2B4A"
@@ -417,22 +424,20 @@ export function ReceiptSheet({
             </div>
           )}
 
-          {/* Authorized Signatory */}
+          {/* Accountant's signature (fee receipts only) */}
           <div className="text-center shrink-0 w-36">
             <div className="h-8 flex items-center justify-center">
-              <svg viewBox="0 0 120 30" className="w-24 h-6 text-[#1A2B4A]">
-                <path
-                  d="M10 20 C25 8, 40 6, 55 18 C65 26, 75 10, 85 14 C95 18, 105 24, 115 16"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                  strokeLinecap="round"
-                />
-              </svg>
+              {/* eslint-disable-next-line @next/next/no-img-element -- static asset supplied by the institute */}
+              <img
+                src={ACCOUNTANT_SIGNATURE_SRC}
+                alt="Accountant's signature"
+                className="max-h-8 max-w-full object-contain"
+                onError={(e) => { e.currentTarget.style.visibility = 'hidden'; }}
+              />
             </div>
             <div className="border-t border-black pt-1">
               <p className="text-[8px] font-bold uppercase tracking-wider text-black font-sans leading-none">
-                Authorized Signatory
+                Accountant&apos;s Signature
               </p>
               <p className="text-[7px] text-gray-600 font-sans mt-0.5">Accounts &amp; Cashier Desk</p>
             </div>

@@ -251,6 +251,7 @@ export default function AccountantTransactionsPage() {
             address: activeStudent?.address,
             photoUrl: activeStudent?.photoUrl,
             signatureUrl: activeStudent?.signatureUrl,
+            branchName: activeStudent?.branchName,
           }}
           onClose={() => setActiveReceipt(null)}
           copyType="OFFICE COPY"

@@ -1,6 +1,7 @@
 'use client';
 
-import React from 'react';
+import React, { useMemo } from 'react';
+import { code128B } from '@/lib/code128';
 
 interface BarcodeProps {
   value: string;
@@ -11,50 +12,43 @@ interface BarcodeProps {
 }
 
 /**
- * High-contrast SVG Code-128 Style Barcode Generator
- * Generates crisp, scannable bars for registration numbers or employee IDs
+ * Real, scannable Code 128 barcode (SVG). A USB/Bluetooth barcode scanner
+ * reads it as keyboard input: the value, then Enter (see /scan).
  */
-export function Barcode({
-  value,
-  width = 220,
-  height = 36,
-  showValue = true,
-  className = '',
-}: BarcodeProps) {
-  const seed = value.split('').map((c) => c.charCodeAt(0));
-  type Bar = { x: number; w: number; black: boolean };
-  const bars: Bar[] = [];
-  let cursor = 0;
-  let i = 0;
-  const targetWidth = width;
-
-  while (cursor < targetWidth) {
-    const w = ((seed[i % seed.length] + i * 3) % 3) + 1.2;
-    bars.push({ x: cursor, w: Math.min(w * 1.8, targetWidth - cursor), black: i % 2 === 0 });
-    cursor += w * 1.8;
-    i++;
-  }
+export function Barcode({ value, width = 220, height = 36, showValue = true, className = '' }: BarcodeProps) {
+  const { rects, modules } = useMemo(() => {
+    const widths = code128B(value);
+    const total = widths.reduce((a, b) => a + b, 0);
+    const out: { x: number; w: number }[] = [];
+    let x = 0;
+    widths.forEach((w, i) => {
+      if (i % 2 === 0) out.push({ x, w });
+      x += w;
+    });
+    return { rects: out, modules: total };
+  }, [value]);
+  // 10-module quiet zone each side, as the spec requires for reliable scans.
+  const quiet = 10;
 
   return (
     <div className={`flex flex-col items-center gap-1 ${className}`}>
       <svg
+        viewBox={`0 0 ${modules + quiet * 2} 1`}
+        preserveAspectRatio="none"
         width={width}
         height={height}
-        viewBox={`0 0 ${width} ${height}`}
-        xmlns="http://www.w3.org/2000/svg"
-        className="w-full max-w-full"
-        style={{ maxHeight: height }}
+        role="img"
+        aria-label={`Barcode ${value}`}
+        shapeRendering="crispEdges"
+        className="max-w-full"
       >
-        {bars.map((b, idx) =>
-          b.black ? (
-            <rect key={idx} x={b.x} y={0} width={b.w} height={height} fill="#0F172A" />
-          ) : null
-        )}
+        <rect x={0} y={0} width={modules + quiet * 2} height={1} fill="#fff" />
+        {rects.map((r, i) => (
+          <rect key={i} x={r.x + quiet} y={0} width={r.w} height={1} fill="#000" />
+        ))}
       </svg>
       {showValue && (
-        <span className="font-mono text-[9px] tracking-[0.25em] text-[#1A2B4A] font-bold select-all">
-          * {value} *
-        </span>
+        <span className="font-mono text-[9px] tracking-[0.2em] text-[#1A2B4A] font-bold select-all">{value}</span>
       )}
     </div>
   );

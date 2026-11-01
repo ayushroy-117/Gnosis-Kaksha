@@ -540,6 +540,7 @@ export default function StudentFeesPage() {
             address: profile.address,
             photoUrl: profile.photoUrl,
             signatureUrl: profile.signatureUrl,
+            branchName: profile.branchName,
           }}
           onClose={() => setActiveReceipt(null)}
           copyType="STUDENT COPY"

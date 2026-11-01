@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -48,7 +48,11 @@ const step1Schema = z
 const step2Schema = z.object({
   currentClass: z.string().min(1, 'Current class is required'),
   schoolName: z.string().min(2, 'School name is required'),
-  previousPercentage: z.string().min(1, 'Previous percentage is required'),
+  // Optional: a blank score simply means no scholarship.
+  previousPercentage: z
+    .string()
+    .optional()
+    .refine((v) => !v || (Number(v) >= 0 && Number(v) <= 100), 'Percentage must be between 0 and 100'),
 });
 
 const step3Schema = z.object({
@@ -133,6 +137,18 @@ export function AdmissionForm() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successData, setSuccessData] = useState<SubmissionSuccessData | null>(null);
 
+  // Mobile OTP: the code is sent as soon as a valid number is entered.
+  const [otpRequired, setOtpRequired] = useState(false);
+  const [otpSentTo, setOtpSentTo] = useState<string | null>(null);
+  const [otpCode, setOtpCode] = useState('');
+  const [otpBusy, setOtpBusy] = useState(false);
+  const [otpError, setOtpError] = useState<string | null>(null);
+  const [otpDevCode, setOtpDevCode] = useState<string | null>(null);
+  const autoSentFor = useRef<string | null>(null);
+  useEffect(() => {
+    fetch('/api/otp/send').then((r) => r.json()).then((d) => setOtpRequired(Boolean(d.required))).catch(() => {});
+  }, []);
+
   /* eslint-disable @typescript-eslint/no-explicit-any -- resolver switches schema per step */
   const form = useForm<any>({
     resolver: zodResolver([step1Schema, step2Schema, step3Schema, step4Schema, step5Schema, step6Schema][currentStep - 1] as any) as any,
@@ -163,7 +179,7 @@ export function AdmissionForm() {
     }
     const classNum = parseInt(formData.currentClass);
     const subjectFees = SUBJECT_FEES[classNum] || {};
-    const prevPercentage = parseInt(formData.previousPercentage || '0');
+    const prevPercentage = parseFloat(formData.previousPercentage || '0') || 0;
     const scholarship = calculateScholarship(prevPercentage);
 
     const selectedSubjectsData = formData.subjects.map((sub: string) => ({
@@ -183,8 +199,64 @@ export function AdmissionForm() {
     [payee, payableAmount, formData.fullName]
   );
 
+  const PHONE_RE = /^(\+91[\s-]?)?[6-9]\d{9}$/;
+  const phoneDigits = (p: string) => p.replace(/\D/g, '').slice(-10);
+  const watchedPhone: string = form.watch('phone') || '';
+  const otpVerified = Boolean(formData.otpProof) && formData.otpPhone === phoneDigits(watchedPhone);
+
+  const sendOtp = async (phone: string) => {
+    setOtpBusy(true);
+    setOtpError(null);
+    try {
+      const res = await fetch('/api/otp/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone }) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not send the code.');
+      setOtpSentTo(phoneDigits(phone));
+      setOtpDevCode(data.devCode ?? null);
+      setOtpCode('');
+      toast.success('OTP sent to your mobile number.');
+    } catch (err) {
+      setOtpError(err instanceof Error ? err.message : 'Could not send the code.');
+    } finally {
+      setOtpBusy(false);
+    }
+  };
+
+  const verifyOtp = async () => {
+    setOtpBusy(true);
+    setOtpError(null);
+    try {
+      const res = await fetch('/api/otp/verify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: watchedPhone, code: otpCode }) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Incorrect code.');
+      setFormData((d) => ({ ...d, otpProof: data.proof, otpPhone: phoneDigits(watchedPhone) }));
+      toast.success('Mobile number verified.');
+    } catch (err) {
+      setOtpError(err instanceof Error ? err.message : 'Incorrect code.');
+    } finally {
+      setOtpBusy(false);
+    }
+  };
+
+  // Send the OTP automatically once a valid number has been typed.
+  useEffect(() => {
+    if (!otpRequired || currentStep !== 1) return;
+    const digits = phoneDigits(watchedPhone);
+    if (!PHONE_RE.test(watchedPhone.trim()) || autoSentFor.current === digits || otpVerified) return;
+    const t = setTimeout(() => {
+      autoSentFor.current = digits;
+      void sendOtp(watchedPhone);
+    }, 700);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [watchedPhone, otpRequired, currentStep, otpVerified]);
+
   const handleNext = async () => {
     const isValid = await form.trigger();
+    if (isValid && currentStep === 1 && otpRequired && !otpVerified) {
+      setOtpError('Verify your mobile number with the OTP to continue.');
+      return;
+    }
     if (isValid) {
       const data = form.getValues();
       const updated = { ...formData, ...data };
@@ -357,6 +429,7 @@ export function AdmissionForm() {
             address: [formData.address, formData.city].filter(Boolean).join(', ') || 'Ramkrishna Nagar',
             photoUrl: formData.photo || null,
             signatureUrl: formData.signature || null,
+            branchName: selectedBranch?.name ?? null,
           }}
           copyType="STUDENT COPY"
           credentials={{
@@ -439,6 +512,42 @@ export function AdmissionForm() {
                   {...form.register('phone')}
                   error={errors.phone?.message}
                 />
+                {otpRequired && PHONE_RE.test(watchedPhone.trim()) && (
+                  <div className="rounded-lg border border-[#CDE6F7] bg-[#F0F7FD] p-4 space-y-3" data-testid="otp-box">
+                    {otpVerified ? (
+                      <p className="flex items-center gap-2 text-sm font-semibold text-emerald-700">
+                        <CheckCircle size={16} /> Mobile number verified
+                      </p>
+                    ) : (
+                      <>
+                        <p className="text-sm text-[#2E5EAA]">
+                          {otpSentTo ? <>We sent a 6-digit OTP to <strong>{otpSentTo}</strong>.</> : 'Sending OTP to your mobile number…'}
+                        </p>
+                        {otpDevCode && (
+                          <p className="text-xs text-amber-700" data-testid="otp-dev-code">Test mode — your code is {otpDevCode}</p>
+                        )}
+                        <div className="flex gap-2">
+                          <input
+                            aria-label="Enter OTP"
+                            inputMode="numeric"
+                            maxLength={6}
+                            value={otpCode}
+                            onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ''))}
+                            placeholder="6-digit OTP"
+                            className="w-40 rounded-lg border border-gray-300 px-3 py-2 text-sm tracking-widest"
+                          />
+                          <Button type="button" onClick={verifyOtp} disabled={otpBusy || otpCode.length !== 6}>
+                            Verify OTP
+                          </Button>
+                          <Button type="button" variant="outline" onClick={() => sendOtp(watchedPhone)} disabled={otpBusy}>
+                            Resend
+                          </Button>
+                        </div>
+                      </>
+                    )}
+                    {otpError && <p className="text-sm text-red-600" role="alert">{otpError}</p>}
+                  </div>
+                )}
                 <Input
                   label="Date of Birth"
                   type="date"
@@ -489,9 +598,9 @@ export function AdmissionForm() {
                   error={errors.schoolName?.message}
                 />
                 <Input
-                  label="Previous Year Score / Percentage (%)"
+                  label="Previous Year Score / Percentage (%) — optional"
                   type="number"
-                  placeholder="85"
+                  placeholder="85 (leave blank if not available)"
                   {...form.register('previousPercentage')}
                   error={errors.previousPercentage?.message}
                 />
