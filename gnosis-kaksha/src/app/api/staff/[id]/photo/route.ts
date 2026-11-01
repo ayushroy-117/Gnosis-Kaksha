@@ -1,18 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionUser, serverError } from '@/lib/authz';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { hasPermission } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-// GET /api/staff/<userId>/photo — a staff photo; the person themself or the admin.
+// GET /api/staff/<userId>/photo — a staff photo; the person themself, the admin, or the accountant (salary receipts).
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   if (!UUID.test(id)) return NextResponse.json({ error: 'Not found.' }, { status: 404 });
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: 'Please sign in to continue.' }, { status: 401 });
-  if (user.id !== id && user.role !== 'admin') {
+  if (user.id !== id && !hasPermission(user.role, 'manage_salaries')) {
     return NextResponse.json({ error: 'You do not have permission to do that.' }, { status: 403 });
   }
   try {

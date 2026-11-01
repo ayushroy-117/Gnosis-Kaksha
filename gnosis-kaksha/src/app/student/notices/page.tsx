@@ -49,6 +49,9 @@ export default function StudentNoticesPage() {
                     </span>
                   )}
                   <h2 className="text-lg font-semibold text-[#1A2B4A]">{n.title}</h2>
+                  {n.issuedBy && (
+                    <span className="rounded bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-800">From {n.issuedBy}</span>
+                  )}
                 </div>
                 <span className="shrink-0 whitespace-nowrap text-xs text-[#718096]">
                   {formatDate(n.date)}

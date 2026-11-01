@@ -30,6 +30,13 @@ export type Permission =
   | 'mark_attendance'
   | 'manage_study_material'
   | 'download_study_material'
+  | 'manage_results'           // teacher: create tests and enter marks for subjects they teach
+  | 'answer_doubts'            // teacher: see students' doubts, post solutions to a class
+  | 'issue_class_notice'       // teacher: notice to students of a class they teach (never public)
+  // Staff
+  | 'manage_salaries'          // salary records, receipts, staff bank details
+  | 'view_staff_reports'       // one-click reports of staff activity, attendance, leave
+  | 'decide_leave'             // approve / reject staff leave
   // Administration
   | 'manage_notices'
   | 'manage_payment_settings'  // institute UPI payee used in payment QR codes
@@ -45,6 +52,9 @@ const MATRIX: Record<Exclude<UserRole, 'admin'>, Permission[]> = {
     'mark_attendance',
     'manage_study_material',
     'download_study_material',
+    'manage_results',
+    'answer_doubts',
+    'issue_class_notice',
   ],
   accountant: [
     'view_student_roster',
@@ -56,6 +66,8 @@ const MATRIX: Record<Exclude<UserRole, 'admin'>, Permission[]> = {
     'view_allocations',
     'resolve_allocation',
     'download_study_material',
+    'manage_salaries',
+    'view_staff_reports',
   ],
 };
 
@@ -64,6 +76,7 @@ export const ALL_PERMISSIONS: Permission[] = [
   'manage_admissions', 'view_financials', 'review_payments', 'record_payment',
   'send_fee_reminders', 'view_allocations', 'request_allocation', 'resolve_allocation',
   'mark_attendance', 'manage_study_material', 'download_study_material',
+  'manage_results', 'answer_doubts', 'issue_class_notice', 'manage_salaries', 'view_staff_reports', 'decide_leave',
   'manage_notices', 'manage_payment_settings', 'manage_branches', 'manage_accounts',
 ];
 

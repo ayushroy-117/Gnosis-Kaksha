@@ -66,9 +66,12 @@ const updateSchema = z.object({
   name: z.string().trim().min(2, 'Branch name must be at least 2 characters').max(80).optional(),
   address: z.string().trim().max(300).nullable().optional(),
   isActive: z.boolean().optional(),
+  latitude: z.number().min(-90).max(90).nullable().optional(),
+  longitude: z.number().min(-180).max(180).nullable().optional(),
+  radiusM: z.number().int().min(20, 'Radius must be at least 20 m').max(5000, 'Radius can be at most 5000 m').optional(),
 });
 
-// PATCH /api/admin/branches — rename, change address, or (de)activate.
+// PATCH /api/admin/branches — rename, change address, set the GPS location, or (de)activate.
 // A deactivated branch keeps its students/teachers but can't take new admissions.
 export async function PATCH(request: NextRequest) {
   const auth = await requirePermission('manage_branches');
@@ -77,11 +80,17 @@ export async function PATCH(request: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid branch' }, { status: 400 });
   }
-  const { id, name, address, isActive } = parsed.data;
+  const { id, name, address, isActive, latitude, longitude, radiusM } = parsed.data;
+  if ((latitude === undefined) !== (longitude === undefined)) {
+    return NextResponse.json({ error: 'Send both latitude and longitude.' }, { status: 400 });
+  }
   const patch: Record<string, unknown> = {};
   if (name !== undefined) patch.name = name;
   if (address !== undefined) patch.address = address || null;
   if (isActive !== undefined) patch.is_active = isActive;
+  if (latitude !== undefined) patch.latitude = latitude;
+  if (longitude !== undefined) patch.longitude = longitude;
+  if (radiusM !== undefined) patch.radius_m = radiusM;
   if (!Object.keys(patch).length) return NextResponse.json({ error: 'Nothing to update.' }, { status: 400 });
 
   try {

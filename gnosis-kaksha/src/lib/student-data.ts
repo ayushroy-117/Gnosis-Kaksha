@@ -69,6 +69,8 @@ export interface StudentNotice {
   attachmentUrl?: string | null;
   attachmentName?: string | null;
   attachmentSize?: string | null;
+  /** Set for notices a teacher sent to the student's class. */
+  issuedBy?: string | null;
 }
 
 export interface StudentData {

@@ -4,6 +4,7 @@ import { requirePermission, serverError } from '@/lib/authz';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { teacherScopeFor } from '@/lib/server/institute';
 import { canTeach } from '@/lib/institute-data';
+import { logActivity } from '@/lib/server/portal';
 
 export const dynamic = 'force-dynamic';
 
@@ -138,6 +139,7 @@ export async function POST(request: NextRequest) {
       ? await db.from('attendance_records').update(row).eq('id', existing.id).select('*').single()
       : await db.from('attendance_records').insert(row).select('*').single();
     if (error) throw error;
+    await logActivity(db, auth.user, existing ? 'Class register updated' : 'Class register marked', `Class ${r.classNumber} · ${r.subject} · ${r.date} · ${row.present_count}/${row.total_students} present`);
     return NextResponse.json({ success: true, record: mapRecord(data) });
   } catch (err) {
     return serverError('attendance POST', err, 'Could not save attendance.');

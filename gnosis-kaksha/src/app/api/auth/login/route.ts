@@ -5,6 +5,7 @@ import { createSessionClient } from '@/lib/supabase/server';
 import { getSessionUser, serverError } from '@/lib/authz';
 import { clientIp, rateLimit } from '@/lib/rate-limit';
 import { homeFor } from '@/lib/permissions';
+import { logActivity } from '@/lib/server/portal';
 
 const bodySchema = z.object({
   identifier: z.string().trim().min(3).max(200),
@@ -53,6 +54,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'This account is disabled. Contact the institute office.' }, { status: 403 });
     }
 
+    if (user.role !== 'student') {
+      const ua = request.headers.get('user-agent') ?? '';
+      const device = /mobile|android|iphone/i.test(ua) ? 'Mobile' : 'Computer';
+      await logActivity(createAdminClient(), user, 'Signed in', `${device} · IP ${ip}`);
+    }
     return NextResponse.json({ success: true, user, redirectTo: homeFor(user.role) });
   } catch (err) {
     return serverError('auth/login', err, 'Sign-in is unavailable right now. Please try again shortly.');

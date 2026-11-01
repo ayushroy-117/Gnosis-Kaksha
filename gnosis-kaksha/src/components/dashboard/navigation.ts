@@ -1,6 +1,7 @@
 import {
   LayoutDashboard, Users, UserPlus, Megaphone, ShieldCheck, Wallet, Receipt, BarChart3,
   ClipboardCheck, ScanLine, SlidersHorizontal, BookOpen, FileText, CalendarCheck, UserCheck, User, Bell, QrCode, Building2,
+  Banknote, ClipboardList, MapPin, HelpCircle, CalendarDays, LineChart,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { UserRole } from '@/lib/permissions';
@@ -36,6 +37,7 @@ export const NAVIGATION: Record<UserRole, DashboardNavGroup[]> = {
         { label: 'Admissions', href: '/admin/admissions', icon: UserPlus },
         { label: 'Notices', href: '/admin/notices', icon: Megaphone },
         { label: 'Accounts & Permissions', href: '/admin/staff', icon: ShieldCheck },
+        { label: 'Staff Leave', href: '/admin/leaves', icon: CalendarDays },
         { label: 'Branches', href: '/admin/branches', icon: Building2 },
         { label: 'Payment Settings', href: '/admin/settings', icon: QrCode },
       ],
@@ -47,6 +49,8 @@ export const NAVIGATION: Record<UserRole, DashboardNavGroup[]> = {
         { label: 'Transactions', href: '/accountant/transactions', icon: Receipt },
         { label: 'Reports', href: '/accountant/reports', icon: BarChart3 },
         { label: 'Fee Structure', href: '/accountant/fee-structure', icon: SlidersHorizontal },
+        { label: 'Salaries', href: '/accountant/salaries', icon: Banknote },
+        { label: 'Staff Reports', href: '/accountant/staff-reports', icon: ClipboardList },
       ],
     },
     {
@@ -55,6 +59,9 @@ export const NAVIGATION: Record<UserRole, DashboardNavGroup[]> = {
         { label: 'Allocations', href: '/accountant/allocations', icon: ClipboardCheck },
         { label: 'Attendance', href: '/teacher/attendance', icon: CalendarCheck },
         { label: 'Study Material', href: '/teacher/study-material', icon: FileText },
+        { label: 'Results', href: '/teacher/results', icon: LineChart },
+        { label: 'Doubt Support', href: '/teacher/doubts', icon: HelpCircle },
+        { label: 'Class Notices', href: '/teacher/notices', icon: Megaphone },
         { label: 'Scan ID', href: '/scan', icon: ScanLine },
       ],
     },
@@ -68,6 +75,9 @@ export const NAVIGATION: Record<UserRole, DashboardNavGroup[]> = {
         { label: 'Reports', href: '/accountant/reports', icon: BarChart3 },
         { label: 'Allocations', href: '/accountant/allocations', icon: ClipboardCheck },
         { label: 'Fee Structure', href: '/accountant/fee-structure', icon: SlidersHorizontal },
+        { label: 'Salaries', href: '/accountant/salaries', icon: Banknote },
+        { label: 'Staff Reports', href: '/accountant/staff-reports', icon: ClipboardList },
+        { label: 'My Leave', href: '/accountant/leave', icon: CalendarDays },
         { label: 'Scan ID', href: '/scan', icon: ScanLine },
       ],
     },
@@ -76,10 +86,15 @@ export const NAVIGATION: Record<UserRole, DashboardNavGroup[]> = {
     {
       items: [
         { label: 'Overview', href: '/teacher/dashboard', icon: LayoutDashboard },
-        { label: 'Attendance', href: '/teacher/attendance', icon: CalendarCheck },
+        { label: 'My Attendance', href: '/teacher/my-attendance', icon: MapPin },
+        { label: 'Class Attendance', href: '/teacher/attendance', icon: CalendarCheck },
         { label: 'Students', href: '/teacher/students', icon: Users },
         { label: 'Allocations', href: '/teacher/allocations', icon: BookOpen },
         { label: 'Study Material', href: '/teacher/study-material', icon: FileText },
+        { label: 'Results & Performance', href: '/teacher/results', icon: LineChart },
+        { label: 'Doubt Support', href: '/teacher/doubts', icon: HelpCircle },
+        { label: 'Notices', href: '/teacher/notices', icon: Megaphone },
+        { label: 'Leave Management', href: '/teacher/leave', icon: CalendarDays },
         { label: 'Scan ID', href: '/scan', icon: ScanLine },
         { label: 'Teacher Profile', href: '/teacher/profile', icon: UserCheck },
       ],
@@ -92,6 +107,9 @@ export const NAVIGATION: Record<UserRole, DashboardNavGroup[]> = {
         { label: 'Profile', href: '/student/profile', icon: User },
         { label: 'My Courses', href: '/student/courses', icon: BookOpen },
         { label: 'Study Material', href: '/student/study-material', icon: FileText },
+        { label: 'Attendance', href: '/student/attendance', icon: CalendarCheck },
+        { label: 'Results & Performance', href: '/student/results', icon: LineChart },
+        { label: 'Doubt Support', href: '/student/doubts', icon: HelpCircle },
         { label: 'Fees', href: '/student/fees', icon: Wallet },
         { label: 'Notices', href: '/student/notices', icon: Bell },
       ],

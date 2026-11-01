@@ -13,15 +13,68 @@ export function staffCodeFor(role: UserRole, userId: string): string {
 
 const phone = z.string().trim().regex(/^(\+91[\s-]?)?[6-9]\d{9}$/, 'Enter a valid 10-digit mobile number');
 
-/** Fields an admin can set when creating or editing a staff member. All optional so old accounts stay valid. */
+const text = (max: number) => z.string().trim().max(max).optional();
+const date = (label: string) => z.string().regex(/^\d{4}-\d{2}-\d{2}$/, `${label} must be a date`).optional().or(z.literal(''));
+const tags = z.array(z.string().trim().min(1).max(60)).max(20).optional();
+
+/**
+ * Fields an admin can set when creating or editing a staff member: what is printed
+ * on the ID card plus the employment terms. All optional so old accounts stay valid.
+ */
 export const staffDetailsSchema = z.object({
-  department: z.string().trim().max(60).optional(),
+  department: text(60),
   phone: phone.optional().or(z.literal('')),
-  fatherName: z.string().trim().max(120).optional(),
-  address: z.string().trim().max(300).optional(),
-  dateOfJoining: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date of joining must be a date').optional().or(z.literal('')),
+  fatherName: text(120),
+  address: text(300),
+  dateOfJoining: date('Date of joining'),
+  employmentType: text(40),
+  probation: text(40),
+  workLocation: text(120),
+  weeklyClasses: text(60),
+  additionalDuties: text(200),
 });
 export type StaffDetailsInput = z.infer<typeof staffDetailsSchema>;
+
+/** Fields the staff member edits on their own profile. */
+export const selfProfileSchema = z.object({
+  dob: date('Date of birth'),
+  gender: text(20),
+  bloodGroup: text(10),
+  alternateEmail: z.string().trim().email('Enter a valid alternate email').max(200).optional().or(z.literal('')),
+  emergencyContact: text(120),
+  permanentAddress: text(300),
+  nationality: text(40),
+  maritalStatus: text(20),
+  languages: text(120),
+  hobbies: text(200),
+  quote: text(200),
+  qualification: text(200),
+  experience: text(60),
+  about: text(1500),
+  teachingSkills: tags,
+  technicalSkills: tags,
+  certifications: z
+    .array(z.object({ title: z.string().trim().min(2).max(120), issuer: z.string().trim().max(120).default(''), year: z.string().trim().max(20).default('') }))
+    .max(20)
+    .optional(),
+});
+export type SelfProfileInput = z.infer<typeof selfProfileSchema>;
+
+/** Bank details: the staff member or the accountant. Monthly salary: accountant/admin only. */
+export const bankSchema = z.object({
+  bankHolder: text(120),
+  bankName: text(120),
+  bankAccount: z.string().trim().regex(/^\d{6,20}$/, 'Account number must be 6–20 digits').optional().or(z.literal('')),
+  bankIfsc: z.string().trim().toUpperCase().regex(/^[A-Z]{4}0[A-Z0-9]{6}$/, 'Enter a valid IFSC (e.g. SBIN0001234)').optional().or(z.literal('')),
+  bankAccountType: text(20),
+});
+export type BankInput = z.infer<typeof bankSchema>;
+
+export interface Certification {
+  title: string;
+  issuer: string;
+  year: string;
+}
 
 export interface StaffProfile {
   userId: string;
@@ -40,6 +93,35 @@ export interface StaffProfile {
   statusChangedOn: string | null;
   branchName: string | null;
   photoUrl: string | null;
+  // Profile tabs
+  dob: string | null;
+  gender: string | null;
+  bloodGroup: string | null;
+  alternateEmail: string | null;
+  emergencyContact: string | null;
+  permanentAddress: string | null;
+  nationality: string | null;
+  maritalStatus: string | null;
+  languages: string | null;
+  hobbies: string | null;
+  quote: string | null;
+  qualification: string | null;
+  experience: string | null;
+  employmentType: string | null;
+  probation: string | null;
+  workLocation: string | null;
+  about: string | null;
+  teachingSkills: string[];
+  technicalSkills: string[];
+  weeklyClasses: string | null;
+  additionalDuties: string | null;
+  certifications: Certification[];
+  monthlySalary: number | null;
+  bankHolder: string | null;
+  bankName: string | null;
+  bankAccount: string | null;
+  bankIfsc: string | null;
+  bankAccountType: string | null;
 }
 
 const ROLE_LABEL: Record<string, string> = { teacher: 'Faculty Member', accountant: 'Accountant', admin: 'Administrator' };
@@ -48,21 +130,28 @@ export function designationFor(role: string, department: string | null): string 
   return department ? `${department} Department` : ROLE_LABEL[role] ?? 'Staff';
 }
 
-type Row = {
+/* eslint-disable @typescript-eslint/no-explicit-any */
+type Row = Record<string, any> & {
   user_id: string;
   staff_code: string;
-  department: string | null;
-  phone: string | null;
-  father_name: string | null;
-  address: string | null;
-  date_of_joining: string | null;
   employment_status: EmploymentStatus;
-  status_changed_on: string | null;
   profiles: { role: UserRole; full_name: string | null; email: string | null; branches?: { name: string } | null } | null;
 };
 
-const SELECT =
-  'user_id, staff_code, department, phone, father_name, address, date_of_joining, employment_status, status_changed_on, profiles(role, full_name, email, branches:branches(name))';
+/* eslint-enable @typescript-eslint/no-explicit-any */
+const SELECT = '*, profiles(role, full_name, email, branches:branches(name))';
+
+/** camelCase field -> staff_details column, for every editable field. */
+const COLUMN: Record<string, string> = {
+  department: 'department', phone: 'phone', fatherName: 'father_name', address: 'address', dateOfJoining: 'date_of_joining',
+  employmentType: 'employment_type', probation: 'probation', workLocation: 'work_location', weeklyClasses: 'weekly_classes',
+  additionalDuties: 'additional_duties', dob: 'dob', gender: 'gender', bloodGroup: 'blood_group', alternateEmail: 'alternate_email',
+  emergencyContact: 'emergency_contact', permanentAddress: 'permanent_address', nationality: 'nationality',
+  maritalStatus: 'marital_status', languages: 'languages', hobbies: 'hobbies', quote: 'quote', qualification: 'qualification',
+  experience: 'experience', about: 'about', teachingSkills: 'teaching_skills', technicalSkills: 'technical_skills',
+  certifications: 'certifications', bankHolder: 'bank_holder', bankName: 'bank_name', bankAccount: 'bank_account',
+  bankIfsc: 'bank_ifsc', bankAccountType: 'bank_account_type', monthlySalary: 'monthly_salary',
+};
 
 async function photoUrls(db: SupabaseClient, ids: string[]) {
   if (!ids.length) return new Map<string, string>();
@@ -89,6 +178,34 @@ function toProfile(r: Row, photo: string | null): StaffProfile {
     statusChangedOn: r.status_changed_on,
     branchName: r.profiles?.branches?.name ?? null,
     photoUrl: photo,
+    dob: r.dob ?? null,
+    gender: r.gender ?? null,
+    bloodGroup: r.blood_group ?? null,
+    alternateEmail: r.alternate_email ?? null,
+    emergencyContact: r.emergency_contact ?? null,
+    permanentAddress: r.permanent_address ?? null,
+    nationality: r.nationality ?? null,
+    maritalStatus: r.marital_status ?? null,
+    languages: r.languages ?? null,
+    hobbies: r.hobbies ?? null,
+    quote: r.quote ?? null,
+    qualification: r.qualification ?? null,
+    experience: r.experience ?? null,
+    employmentType: r.employment_type ?? null,
+    probation: r.probation ?? null,
+    workLocation: r.work_location ?? null,
+    about: r.about ?? null,
+    teachingSkills: r.teaching_skills ?? [],
+    technicalSkills: r.technical_skills ?? [],
+    weeklyClasses: r.weekly_classes ?? null,
+    additionalDuties: r.additional_duties ?? null,
+    certifications: Array.isArray(r.certifications) ? r.certifications : [],
+    monthlySalary: r.monthly_salary == null ? null : Number(r.monthly_salary),
+    bankHolder: r.bank_holder ?? null,
+    bankName: r.bank_name ?? null,
+    bankAccount: r.bank_account ?? null,
+    bankIfsc: r.bank_ifsc ?? null,
+    bankAccountType: r.bank_account_type ?? null,
   };
 }
 
@@ -125,14 +242,19 @@ export async function loadAllStaff(db: SupabaseClient): Promise<Map<string, Staf
   return new Map(rows.map((r) => [r.user_id, toProfile(r, photos.get(r.user_id) ?? null)]));
 }
 
-export async function saveStaffDetails(db: SupabaseClient, userId: string, role: UserRole, d: StaffDetailsInput) {
+/** Save any subset of profile fields (callers validate with the schema matching who is editing). */
+export async function saveStaffDetails(
+  db: SupabaseClient,
+  userId: string,
+  role: UserRole,
+  d: Partial<StaffDetailsInput & SelfProfileInput & BankInput & { monthlySalary: number | null }>
+) {
   await ensureStaffDetails(db, userId, role);
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
-  if (d.department !== undefined) patch.department = d.department || null;
-  if (d.phone !== undefined) patch.phone = d.phone || null;
-  if (d.fatherName !== undefined) patch.father_name = d.fatherName || null;
-  if (d.address !== undefined) patch.address = d.address || null;
-  if (d.dateOfJoining !== undefined) patch.date_of_joining = d.dateOfJoining || null;
+  for (const [key, value] of Object.entries(d)) {
+    if (value === undefined || !COLUMN[key]) continue;
+    patch[COLUMN[key]] = value === '' ? null : value;
+  }
   const { error } = await db.from('staff_details').update(patch).eq('user_id', userId);
   if (error) throw error;
 }

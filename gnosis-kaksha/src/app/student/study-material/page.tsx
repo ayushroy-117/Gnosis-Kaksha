@@ -47,8 +47,8 @@ export default function StudentStudyMaterialPage() {
   const materialsUrl = !isActive || studentClass === undefined
     ? null
     : activeTab === 'my_class'
-      ? `/api/study-material?classNumber=${studentClass}`
-      : '/api/study-material';
+      ? `/api/study-material?scope=portal&classNumber=${studentClass}`
+      : '/api/study-material?scope=portal';
   const materialsApi = useApi<{ materials: StudyMaterial[] }>(materialsUrl);
   const materials = useMemo(() => materialsApi.data?.materials ?? [], [materialsApi.data]);
 

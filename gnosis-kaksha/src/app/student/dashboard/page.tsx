@@ -204,8 +204,13 @@ export default function StudentDashboardPage() {
           }
         >
           <div className="flex items-center gap-4">
-            <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-[#CDE6F7] text-[#1295D8]">
-              <User size={28} />
+            <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#CDE6F7] text-[#1295D8]">
+              {profile.photoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element -- auth-gated API image
+                <img src={profile.photoUrl} alt={profile.fullName} className="h-full w-full object-cover" />
+              ) : (
+                <User size={28} />
+              )}
             </div>
             <div className="min-w-0">
               <p className="truncate text-base font-semibold text-[#1A2B4A]">
