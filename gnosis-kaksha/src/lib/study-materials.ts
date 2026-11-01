@@ -23,4 +23,6 @@ export interface StudyMaterial {
   createdAt: string;
   downloads: number;
   isFeatured?: boolean;
+  /** Listed on the public Free Study Materials page (staff toggle it). */
+  isPublic: boolean;
 }

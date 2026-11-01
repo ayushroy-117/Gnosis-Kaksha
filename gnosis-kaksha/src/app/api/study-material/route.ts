@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { requirePermission, serverError } from '@/lib/authz';
+import { getSessionUser, requirePermission, serverError, type SessionUser } from '@/lib/authz';
+import { hasPermission } from '@/lib/permissions';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { createAdminClient } from '@/lib/supabase/admin';
 import type { MaterialCategory, StudyMaterial } from '@/lib/study-materials';
 import { teacherScopeFor } from '@/lib/server/institute';
@@ -15,7 +17,7 @@ const ALLOWED: Record<string, StudyMaterial['fileType']> = {
   'application/zip': 'ZIP',
   'application/x-zip-compressed': 'ZIP',
 };
-const COLUMNS = 'id, title, description, class_number, subject, category, file_name, file_type, file_size, uploaded_by, downloads, is_featured, created_at';
+const COLUMNS = 'id, title, description, class_number, subject, category, file_name, file_type, file_size, uploaded_by, downloads, is_featured, is_public, created_at';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 function mapMaterial(r: any): StudyMaterial {
@@ -34,6 +36,7 @@ function mapMaterial(r: any): StudyMaterial {
     createdAt: (r.created_at ?? '').slice(0, 10),
     downloads: r.downloads ?? 0,
     isFeatured: r.is_featured ?? false,
+    isPublic: r.is_public ?? true,
   };
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
@@ -42,12 +45,16 @@ function humanSize(bytes: number) {
   return bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
 }
 
-// GET /api/study-material?classNumber=&subject=&category=&q= — public catalogue
-// (metadata only). Downloading a file requires signing in.
+// GET /api/study-material?classNumber=&subject=&category=&q=&scope=portal — catalogue
+// (metadata only). The public page gets only files staff marked public; signed-in
+// students and staff pass scope=portal to see everything. Downloading requires signing in.
 export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
   try {
     let q = createAdminClient().from('study_materials').select(COLUMNS).order('created_at', { ascending: false });
+    if (sp.get('scope') !== 'portal' || !hasPermission((await getSessionUser())?.role, 'download_study_material')) {
+      q = q.eq('is_public', true);
+    }
     const classNum = Number(sp.get('classNumber'));
     if (classNum) q = q.eq('class_number', classNum);
     const subject = sp.get('subject');
@@ -76,6 +83,7 @@ const metaSchema = z.object({
   classNumber: z.coerce.number().int().min(5).max(12),
   subject: z.string().trim().min(1).max(60),
   category: z.enum(['Notes', 'PYQ', 'Worksheet', 'Formula Sheet', 'Syllabus']),
+  isPublic: z.enum(['true', 'false']).default('false').transform((v) => v === 'true'),
 });
 
 // POST /api/study-material (multipart/form-data) — teacher/admin uploads a file.
@@ -129,6 +137,7 @@ export async function POST(req: NextRequest) {
         file_data: `\\x${bytes.toString('hex')}`,
         uploaded_by: auth.user.fullName,
         uploader_id: auth.user.id,
+        is_public: m.isPublic,
       })
       .select(COLUMNS)
       .single();
@@ -139,25 +148,56 @@ export async function POST(req: NextRequest) {
   }
 }
 
+/** Teachers may change their own uploads, or material for subjects they teach; admin anything. Returns an error response or null. */
+async function denyChange(db: SupabaseClient, user: SessionUser, id: string) {
+  const scope = await teacherScopeFor(db, user);
+  if (scope === null) return null;
+  const { data: m } = await db.from('study_materials').select('subject, class_number, uploader_id').eq('id', id).maybeSingle();
+  if (!m) return NextResponse.json({ success: false, error: 'Not found.' }, { status: 404 });
+  if (m.uploader_id !== user.id && !canTeach(scope, m.subject, m.class_number)) {
+    return NextResponse.json({ success: false, error: 'You can only change material for subjects you teach.' }, { status: 403 });
+  }
+  return null;
+}
+
+const UUID = /^[0-9a-f-]{36}$/i;
+
+// PATCH /api/study-material { id, isPublic } — show/hide on the public page.
+export async function PATCH(req: NextRequest) {
+  const auth = await requirePermission('manage_study_material');
+  if (!auth.ok) return auth.response;
+  const parsed = z.object({ id: z.string().regex(UUID), isPublic: z.boolean() }).safeParse(await req.json().catch(() => null));
+  if (!parsed.success) return NextResponse.json({ success: false, error: 'A valid id and isPublic are required.' }, { status: 400 });
+  try {
+    const db = createAdminClient();
+    const denied = await denyChange(db, auth.user, parsed.data.id);
+    if (denied) return denied;
+    const { data, error } = await db
+      .from('study_materials')
+      .update({ is_public: parsed.data.isPublic })
+      .eq('id', parsed.data.id)
+      .select(COLUMNS)
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) return NextResponse.json({ success: false, error: 'Not found.' }, { status: 404 });
+    return NextResponse.json({ success: true, material: mapMaterial(data) });
+  } catch (err) {
+    return serverError('study-material PATCH', err, 'Could not update the material.');
+  }
+}
+
 // DELETE /api/study-material?id=<uuid> — teacher/admin.
 export async function DELETE(req: NextRequest) {
   const auth = await requirePermission('manage_study_material');
   if (!auth.ok) return auth.response;
   const id = req.nextUrl.searchParams.get('id');
-  if (!id || !/^[0-9a-f-]{36}$/i.test(id)) {
+  if (!id || !UUID.test(id)) {
     return NextResponse.json({ success: false, error: 'A valid id is required.' }, { status: 400 });
   }
   try {
     const db = createAdminClient();
-    const scope = await teacherScopeFor(db, auth.user);
-    if (scope !== null) {
-      // Teachers may delete their own uploads, or material for subjects they teach.
-      const { data: m } = await db.from('study_materials').select('subject, class_number, uploader_id').eq('id', id).maybeSingle();
-      if (!m) return NextResponse.json({ success: false, error: 'Not found.' }, { status: 404 });
-      if (m.uploader_id !== auth.user.id && !canTeach(scope, m.subject, m.class_number)) {
-        return NextResponse.json({ success: false, error: 'You can only delete material for subjects you teach.' }, { status: 403 });
-      }
-    }
+    const denied = await denyChange(db, auth.user, id);
+    if (denied) return denied;
     const { data, error } = await db.from('study_materials').delete().eq('id', id).select('id');
     if (error) throw error;
     if (!data?.length) return NextResponse.json({ success: false, error: 'Not found.' }, { status: 404 });

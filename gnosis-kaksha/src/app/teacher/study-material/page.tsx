@@ -9,6 +9,8 @@ import {
   Search,
   X,
   Upload,
+  Globe,
+  Lock,
 } from 'lucide-react';
 import { SectionCard } from '@/components/dashboard/SectionCard';
 import { EmptyState } from '@/components/dashboard/EmptyState';
@@ -36,13 +38,14 @@ function formatBytes(bytes: number) {
 }
 
 export default function TeacherStudyMaterialPage() {
-  const { data, error, loading, reload, setData } = useApi<{ materials: StudyMaterial[] }>('/api/study-material');
+  const { data, error, loading, reload, setData } = useApi<{ materials: StudyMaterial[] }>('/api/study-material?scope=portal');
   const materials = data?.materials ?? [];
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [classFilter, setClassFilter] = useState<string>('all');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
 
   // Form state
   const [formTitle, setFormTitle] = useState('');
@@ -51,6 +54,7 @@ export default function TeacherStudyMaterialPage() {
   const [formCategory, setFormCategory] = useState<MaterialCategory>('Notes');
   const [formDescription, setFormDescription] = useState('');
   const [formFile, setFormFile] = useState<File | null>(null);
+  const [formPublic, setFormPublic] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Upload options are limited to what this teacher is assigned (admin: everything).
@@ -86,6 +90,7 @@ export default function TeacherStudyMaterialPage() {
     setFormTitle('');
     setFormDescription('');
     setFormFile(null);
+    setFormPublic(false);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -137,6 +142,7 @@ export default function TeacherStudyMaterialPage() {
     body.append('classNumber', formClass);
     body.append('subject', formSubject);
     body.append('category', formCategory);
+    body.append('isPublic', String(formPublic));
     body.append('file', formFile);
 
     setIsSubmitting(true);
@@ -152,6 +158,22 @@ export default function TeacherStudyMaterialPage() {
       toast.error(err instanceof Error ? err.message : 'Failed to upload study material');
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const togglePublic = async (item: StudyMaterial) => {
+    setTogglingId(item.id);
+    try {
+      const { material } = await apiFetch<{ material: StudyMaterial }>('/api/study-material', {
+        method: 'PATCH',
+        json: { id: item.id, isPublic: !item.isPublic },
+      });
+      setData((prev) => (prev ? { materials: prev.materials.map((m) => (m.id === material.id ? material : m)) } : prev));
+      toast.success(material.isPublic ? 'Now shown on the public Free Study Materials page' : 'Hidden from the public page (students still see it)');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not update the material');
+    } finally {
+      setTogglingId(null);
     }
   };
 
@@ -252,6 +274,7 @@ export default function TeacherStudyMaterialPage() {
                 <th className="px-6 py-3">Type</th>
                 <th className="px-6 py-3">Downloads</th>
                 <th className="px-6 py-3">Uploaded By</th>
+                <th className="px-6 py-3">Public Page</th>
                 <th className="px-6 py-3 text-right">Actions</th>
               </tr>
             </thead>
@@ -279,6 +302,19 @@ export default function TeacherStudyMaterialPage() {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-xs text-gray-500">
                     {item.uploadedBy}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <button
+                      type="button"
+                      onClick={() => togglePublic(item)}
+                      disabled={togglingId === item.id}
+                      aria-pressed={item.isPublic}
+                      title={item.isPublic ? 'Shown on the public Free Study Materials page. Click to hide.' : 'Only signed-in students see this. Click to show on the public page.'}
+                      className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-semibold transition disabled:opacity-50 ${item.isPublic ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : 'border-gray-200 bg-gray-50 text-gray-500 hover:bg-gray-100'}`}
+                    >
+                      {item.isPublic ? <Globe size={12} /> : <Lock size={12} />}
+                      {item.isPublic ? 'Shown' : 'Hidden'}
+                    </button>
                   </td>
                   <td className="px-6 py-4 text-right whitespace-nowrap">
                     <a
@@ -428,6 +464,19 @@ export default function TeacherStudyMaterialPage() {
                   </p>
                 )}
               </div>
+
+              <label className="flex items-start gap-2 rounded-lg border border-gray-200 bg-gray-50 p-2.5 text-xs text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={formPublic}
+                  onChange={(e) => setFormPublic(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 accent-[#1295D8]"
+                />
+                <span>
+                  <span className="font-semibold">Show on the public Free Study Materials page</span>
+                  <span className="block text-gray-500">Signed-in students of this class always see it. You can change this later.</span>
+                </span>
+              </label>
 
               <div className="flex gap-3 pt-2">
                 <Button

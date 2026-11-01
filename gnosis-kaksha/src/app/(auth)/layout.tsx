@@ -1,3 +1,4 @@
+import Image from 'next/image';
 import Link from 'next/link';
 
 export default function AuthLayout({
@@ -10,13 +11,11 @@ export default function AuthLayout({
       <div className="w-full max-w-md">
         {/* Header */}
         <div className="text-center mb-8">
-          <div className="flex items-center justify-center gap-2 mb-4">
-            <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center">
-              <span className="text-[#1295D8] font-bold text-xl">GK</span>
-            </div>
+          <div className="flex items-center justify-center gap-3 mb-4">
+            <Image src="/logo-white.png" alt="Gnosis Kaksha logo" width={56} height={56} className="h-14 w-14 object-contain" priority />
             <span className="text-2xl font-bold text-white">Gnosis Kaksha</span>
           </div>
-          <p className="text-[#CDE6F7] text-sm">Portal Access - Teachers & Admin</p>
+          <p className="text-[#CDE6F7] text-sm">Portal Access - Students, Teachers & Admin</p>
         </div>
 
         {/* Card Container */}
