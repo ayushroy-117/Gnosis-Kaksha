@@ -22,7 +22,13 @@ for _ in $(seq 1 40); do
   if docker compose exec -T app wget -q --spider http://localhost:3000/ 2>/dev/null; then
     docker image prune -f > /dev/null
     echo "==> Ensuring test accounts"
-    bash deploy/scripts/ensure-test-accounts.sh || echo "WARN: test accounts not ensured (see above)" >&2
+    # Runs inside the app container (it already has the Supabase URL/key); only set TEST_* are passed.
+    test_env=()
+    for v in TEST_ADMIN_PASSWORD TEST_ACCOUNTANT_PASSWORD TEST_TEACHER_PASSWORD TEST_STUDENT_PASSWORD TEST_DOMAIN; do
+      [[ -n "${!v:-}" ]] && test_env+=(-e "$v=${!v}")
+    done
+    docker compose exec -T "${test_env[@]}" app node --input-type=module < deploy/scripts/ensure-test-accounts.mjs \
+      || echo "WARN: test accounts not ensured (see above)" >&2
     echo "==> Deployed $(git rev-parse --short HEAD)"
     exit 0
   fi
