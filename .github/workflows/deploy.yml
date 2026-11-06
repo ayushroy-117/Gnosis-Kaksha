@@ -20,7 +20,13 @@ jobs:
     steps:
       - name: Build and restart on the VPS
         uses: appleboy/ssh-action@v1.2.0
+        env:
+          TEST_ADMIN_PASSWORD: ${{ secrets.TEST_ADMIN_PASSWORD }}
+          TEST_ACCOUNTANT_PASSWORD: ${{ secrets.TEST_ACCOUNTANT_PASSWORD }}
+          TEST_TEACHER_PASSWORD: ${{ secrets.TEST_TEACHER_PASSWORD }}
+          TEST_STUDENT_PASSWORD: ${{ secrets.TEST_STUDENT_PASSWORD }}
         with:
+          envs: TEST_ADMIN_PASSWORD,TEST_ACCOUNTANT_PASSWORD,TEST_TEACHER_PASSWORD,TEST_STUDENT_PASSWORD
           host: ${{ secrets.VPS_HOST }}
           port: ${{ secrets.VPS_PORT || 22 }}
           username: ${{ secrets.VPS_USER }}
