@@ -21,6 +21,8 @@ docker compose up -d
 for _ in $(seq 1 40); do
   if docker compose exec -T app wget -q --spider http://localhost:3000/ 2>/dev/null; then
     docker image prune -f > /dev/null
+    echo "==> Ensuring test accounts"
+    bash deploy/scripts/ensure-test-accounts.sh || echo "WARN: test accounts not ensured (see above)" >&2
     echo "==> Deployed $(git rev-parse --short HEAD)"
     exit 0
   fi
